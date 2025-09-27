@@ -26,6 +26,9 @@ pub enum ReqError {
     /// Split points are not properly sorted or contain invalid values.
     InvalidSplitPoints(String),
 
+    /// Operation not supported for this type.
+    UnsupportedOperation(String),
+
     /// Serialization/deserialization error.
     #[cfg(feature = "serde")]
     SerializationError(String),
@@ -40,6 +43,7 @@ impl fmt::Display for ReqError {
             ReqError::IncompatibleSketches(msg) => write!(f, "Incompatible sketches: {}", msg),
             ReqError::CacheInvalid => write!(f, "Internal cache is invalid"),
             ReqError::InvalidSplitPoints(msg) => write!(f, "Invalid split points: {}", msg),
+            ReqError::UnsupportedOperation(msg) => write!(f, "Unsupported operation: {}", msg),
             #[cfg(feature = "serde")]
             ReqError::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
         }
