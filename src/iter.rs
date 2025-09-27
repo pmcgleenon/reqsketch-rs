@@ -6,13 +6,16 @@ use crate::compactor::Compactor;
 ///
 /// Provides access to all items in the sketch along with their weights,
 /// which depend on the level of the compactor they're stored in.
+///
+/// Zero-allocation implementation that works directly with slices.
 pub struct ReqSketchIterator<'a, T>
 where
     T: PartialOrd + Clone,
 {
     compactors: &'a [Compactor<T>],
     current_level: usize,
-    current_item: usize,
+    current_level_iter: Option<std::slice::Iter<'a, T>>,
+    current_weight: u64,
 }
 
 impl<'a, T> ReqSketchIterator<'a, T>
@@ -21,11 +24,32 @@ where
 {
     /// Creates a new iterator over the compactors.
     pub(crate) fn new(compactors: &'a [Compactor<T>]) -> Self {
-        Self {
+        let mut iter = Self {
             compactors,
             current_level: 0,
-            current_item: 0,
+            current_level_iter: None,
+            current_weight: 0,
+        };
+        iter.advance_to_next_level();
+        iter
+    }
+
+    fn advance_to_next_level(&mut self) {
+        while self.current_level < self.compactors.len() {
+            let compactor = &self.compactors[self.current_level];
+            // Access items slice directly without allocation
+            let items_slice = compactor.items_slice();
+
+            if !items_slice.is_empty() {
+                self.current_level_iter = Some(items_slice.iter());
+                self.current_weight = compactor.weight();
+                return;
+            }
+
+            self.current_level += 1;
         }
+
+        self.current_level_iter = None;
     }
 }
 
@@ -36,32 +60,31 @@ where
     type Item = (T, u64);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.current_level < self.compactors.len() {
-            let compactor = &self.compactors[self.current_level];
-            let items: Vec<&T> = compactor.iter().collect();
-
-            if self.current_item < items.len() {
-                let item = items[self.current_item].clone();
-                let weight = compactor.weight();
-                self.current_item += 1;
-                return Some((item, weight));
+        loop {
+            if let Some(ref mut level_iter) = self.current_level_iter {
+                if let Some(item) = level_iter.next() {
+                    return Some((item.clone(), self.current_weight));
+                }
             }
 
-            // Move to next level
+            // Current level exhausted, move to next
             self.current_level += 1;
-            self.current_item = 0;
-        }
+            self.advance_to_next_level();
 
-        None
+            if self.current_level_iter.is_none() {
+                return None;
+            }
+        }
     }
 }
 
 /// Iterator over items in a specific compactor level.
+/// Zero-allocation implementation using direct slice iteration.
 pub struct CompactorIterator<'a, T>
 where
     T: PartialOrd + Clone,
 {
-    items: Box<dyn Iterator<Item = &'a T> + 'a>,
+    items_iter: std::slice::Iter<'a, T>,
     weight: u64,
 }
 
@@ -72,7 +95,7 @@ where
     /// Creates a new iterator for a compactor.
     pub fn new(compactor: &'a Compactor<T>) -> Self {
         Self {
-            items: Box::new(compactor.iter()),
+            items_iter: compactor.items_slice().iter(),
             weight: compactor.weight(),
         }
     }
@@ -85,7 +108,7 @@ where
     type Item = (T, u64);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.items.next().map(|item| (item.clone(), self.weight))
+        self.items_iter.next().map(|item| (item.clone(), self.weight))
     }
 }
 
