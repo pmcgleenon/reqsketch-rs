@@ -45,6 +45,7 @@ pub mod compactor;
 pub mod error;
 pub mod iter;
 pub mod sorted_view;
+use sorted_view::IntoF64;
 
 #[cfg(test)]
 mod test_all_quantiles;
@@ -289,7 +290,7 @@ where
         }
 
         let sorted_view = self.get_sorted_view()?;
-        sorted_view.rank(item, criteria)
+        sorted_view.rank_no_interpolation(item, criteria)
     }
 
     /// Returns the approximate rank of the given item using inclusive criteria.
@@ -397,8 +398,9 @@ where
 
     fn needs_compression(&self) -> bool {
         let total_capacity: u32 = self.compactors.iter().map(|c| c.nominal_capacity()).sum();
-        // Allow some over-capacity to match C++ behavior (they use ~95% utilization)
-        let threshold = (total_capacity as f32 * 1.05).round() as u32; // 5% over-capacity buffer
+        // More conservative compaction to match C++ precision
+        // C++ achieves much higher accuracy, suggesting they retain more items
+        let threshold = (total_capacity as f32 * 1.15).round() as u32; // 15% over-capacity buffer
         self.num_retained() >= threshold
     }
 
@@ -516,7 +518,7 @@ where
         let lb_rel = rank - num_std_dev as f64 * relative;
         let lb_fix = rank - num_std_dev as f64 * fixed;
 
-        lb_rel.max(lb_fix).max(0.0)
+        lb_rel.max(lb_fix)
     }
 
     /// Returns the upper bound for the rank of a given quantile at the specified confidence level.
@@ -540,7 +542,7 @@ where
         let ub_rel = rank + num_std_dev as f64 * relative;
         let ub_fix = rank + num_std_dev as f64 * fixed;
 
-        ub_rel.min(ub_fix).min(1.0)
+        ub_rel.min(ub_fix)
     }
 
     /// Constants for error calculation matching C++ implementation
@@ -575,6 +577,19 @@ where
 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// Specialized implementation for f64 with interpolation support
+impl ReqSketch<f64> {
+    /// Returns the approximate rank of the given item using interpolation for better accuracy.
+    pub fn rank_interpolated(&self, item: &f64, criteria: SearchCriteria) -> Result<f64> {
+        if self.is_empty() {
+            return Err(ReqError::EmptySketch);
+        }
+
+        let sorted_view = self.get_sorted_view()?;
+        sorted_view.rank_with_interpolation(item, criteria)
     }
 }
 

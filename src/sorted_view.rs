@@ -21,6 +21,48 @@ pub struct SortedView<T> {
     total_weight: u64,
 }
 
+/// Trait for types that can be converted to f64 for interpolation
+pub trait IntoF64 {
+    fn into_f64(self) -> f64;
+}
+
+// Implement for common numeric types
+impl IntoF64 for f64 {
+    fn into_f64(self) -> f64 {
+        self
+    }
+}
+
+impl IntoF64 for f32 {
+    fn into_f64(self) -> f64 {
+        self as f64
+    }
+}
+
+impl IntoF64 for i32 {
+    fn into_f64(self) -> f64 {
+        self as f64
+    }
+}
+
+impl IntoF64 for i64 {
+    fn into_f64(self) -> f64 {
+        self as f64
+    }
+}
+
+impl IntoF64 for u32 {
+    fn into_f64(self) -> f64 {
+        self as f64
+    }
+}
+
+impl IntoF64 for u64 {
+    fn into_f64(self) -> f64 {
+        self as f64
+    }
+}
+
 impl<T> SortedView<T>
 where
     T: PartialOrd + Clone,
@@ -75,7 +117,7 @@ where
         self.total_weight
     }
 
-    /// Returns the approximate rank of the given item.
+    /// Returns the approximate rank of the given item without interpolation.
     ///
     /// # Arguments
     /// * `item` - The item to find the rank for
@@ -83,23 +125,50 @@ where
     ///
     /// # Returns
     /// A normalized rank in [0.0, 1.0]
-    pub fn rank(&self, item: &T, criteria: SearchCriteria) -> Result<f64> {
+    pub fn rank_no_interpolation(&self, item: &T, criteria: SearchCriteria) -> Result<f64> {
         if self.is_empty() {
             return Err(ReqError::EmptySketch);
         }
 
         match criteria {
             SearchCriteria::Inclusive => {
-                // Find the last occurrence of items <= target (standard inclusive rank)
-                let mut cumulative_weight = 0u64;
+                // Find where this item would fit and use interpolation like C++
+                let mut before_idx = None;
+                let mut after_idx = None;
+
                 for i in 0..self.items.len() {
                     if self.items[i] <= *item {
-                        cumulative_weight = self.cumulative_weights[i];
+                        before_idx = Some(i);
                     } else {
+                        after_idx = Some(i);
                         break;
                     }
                 }
-                Ok(cumulative_weight as f64 / self.total_weight as f64)
+
+                match (before_idx, after_idx) {
+                    (None, _) => {
+                        // Item is smaller than all retained items
+                        Ok(0.0)
+                    }
+                    (Some(before), None) => {
+                        // Item is larger than all retained items
+                        Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
+                    }
+                    (Some(before), Some(after)) if self.items[before] == *item => {
+                        // Exact match
+                        Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
+                    }
+                    (Some(before), Some(after)) => {
+                        // Interpolate between before and after items (like C++)
+                        let before_item = &self.items[before];
+                        let after_item = &self.items[after];
+                        let before_weight = self.cumulative_weights[before];
+                        let after_weight = self.cumulative_weights[after];
+
+                        // For non-numeric types, fall back to step function (no interpolation)
+                        Ok(before_weight as f64 / self.total_weight as f64)
+                    }
+                }
             }
             SearchCriteria::Exclusive => {
                 // Find the last occurrence of items < target (strictly less than)
@@ -115,6 +184,7 @@ where
             }
         }
     }
+
 
     /// Returns the approximate quantile for the given normalized rank.
     ///
@@ -199,7 +269,7 @@ where
         let mut prev_rank = 0.0;
 
         for split_point in split_points {
-            let rank = self.rank(split_point, criteria)?;
+            let rank = self.rank_no_interpolation(split_point, criteria)?;
             result.push(rank - prev_rank);
             prev_rank = rank;
         }
@@ -262,6 +332,86 @@ where
     }
 }
 
+// Specialized implementation for f64 with interpolation support
+impl SortedView<f64> {
+    /// Returns the approximate rank of the given item using interpolation.
+    pub fn rank(&self, item: &f64, criteria: SearchCriteria) -> Result<f64> {
+        self.rank_with_interpolation(item, criteria)
+    }
+}
+
+// Specialized implementation for numeric types that support interpolation
+impl<T> SortedView<T>
+where
+    T: PartialOrd + Clone + IntoF64 + Copy,
+{
+    /// Returns the approximate rank of the given item with interpolation support.
+    pub fn rank_with_interpolation(&self, item: &T, criteria: SearchCriteria) -> Result<f64> {
+        if self.is_empty() {
+            return Err(ReqError::EmptySketch);
+        }
+
+        match criteria {
+            SearchCriteria::Inclusive => {
+                // Find where this item would fit and use interpolation like C++
+                let mut before_idx = None;
+                let mut after_idx = None;
+
+                for i in 0..self.items.len() {
+                    if self.items[i] <= *item {
+                        before_idx = Some(i);
+                    } else {
+                        after_idx = Some(i);
+                        break;
+                    }
+                }
+
+                match (before_idx, after_idx) {
+                    (None, _) => {
+                        // Item is smaller than all retained items
+                        Ok(0.0)
+                    }
+                    (Some(before), None) => {
+                        // Item is larger than all retained items
+                        Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
+                    }
+                    (Some(before), Some(_after)) if self.items[before] == *item => {
+                        // Exact match
+                        Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
+                    }
+                    (Some(before), Some(after)) => {
+                        // Interpolate between before and after items (like C++)
+                        let before_item = self.items[before];
+                        let after_item = self.items[after];
+                        let before_weight = self.cumulative_weights[before];
+                        let after_weight = self.cumulative_weights[after];
+
+                        // Convert to f64 for interpolation
+                        let before_val = before_item.into_f64();
+                        let after_val = after_item.into_f64();
+                        let target_val = item.into_f64();
+
+                        if (after_val - before_val).abs() < f64::EPSILON {
+                            // Items are essentially equal, no interpolation needed
+                            Ok(before_weight as f64 / self.total_weight as f64)
+                        } else {
+                            // Linear interpolation
+                            let t = (target_val - before_val) / (after_val - before_val);
+                            let interpolated_weight = before_weight as f64 +
+                                t * (after_weight - before_weight) as f64;
+                            Ok(interpolated_weight / self.total_weight as f64)
+                        }
+                    }
+                }
+            }
+            SearchCriteria::Exclusive => {
+                // Use the base implementation for exclusive searches
+                self.rank_no_interpolation(item, criteria)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,16 +436,16 @@ mod tests {
         let view = create_test_view();
 
         // Test exact matches
-        assert!((view.rank(&1, SearchCriteria::Inclusive).unwrap() - 0.2).abs() < 1e-10);
-        assert!((view.rank(&1, SearchCriteria::Exclusive).unwrap() - 0.0).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&1, SearchCriteria::Inclusive).unwrap() - 0.2).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&1, SearchCriteria::Exclusive).unwrap() - 0.0).abs() < 1e-10);
 
         // Test values between items
-        assert!((view.rank(&2, SearchCriteria::Inclusive).unwrap() - 0.2).abs() < 1e-10);
-        assert!((view.rank(&6, SearchCriteria::Inclusive).unwrap() - 0.6).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&2, SearchCriteria::Inclusive).unwrap() - 0.2).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&6, SearchCriteria::Inclusive).unwrap() - 0.6).abs() < 1e-10);
 
         // Test edge cases
-        assert!((view.rank(&0, SearchCriteria::Inclusive).unwrap() - 0.0).abs() < 1e-10);
-        assert!((view.rank(&10, SearchCriteria::Inclusive).unwrap() - 1.0).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&0, SearchCriteria::Inclusive).unwrap() - 0.0).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&10, SearchCriteria::Inclusive).unwrap() - 1.0).abs() < 1e-10);
     }
 
     #[test]
@@ -355,7 +505,7 @@ mod tests {
         assert_eq!(view.total_weight(), 0);
 
         // Operations on empty view should return errors
-        assert!(view.rank(&5, SearchCriteria::Inclusive).is_err());
+        assert!(view.rank_no_interpolation(&5, SearchCriteria::Inclusive).is_err());
         assert!(view.quantile(0.5, SearchCriteria::Inclusive).is_err());
     }
 }
