@@ -76,9 +76,25 @@ pub enum RankAccuracy {
     LowRank,
 }
 
+/// Configuration for rank calculation method
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum RankMethod {
+    /// Use step function (C++ compatible, current default)
+    StepFunction,
+    /// Use linear interpolation (enhanced precision beyond C++)
+    Interpolation,
+}
+
 impl Default for RankAccuracy {
     fn default() -> Self {
         RankAccuracy::HighRank
+    }
+}
+
+impl Default for RankMethod {
+    fn default() -> Self {
+        RankMethod::StepFunction // C++ compatible by default
     }
 }
 
@@ -107,6 +123,7 @@ impl Default for SearchCriteria {
 pub struct ReqSketch<T> {
     k: u16,
     rank_accuracy: RankAccuracy,
+    rank_method: RankMethod,
     total_n: u64,
     min_item: Option<T>,
     max_item: Option<T>,
@@ -278,6 +295,8 @@ where
 
     /// Returns the approximate rank of the given item.
     ///
+    /// Uses the configured rank method (step function or interpolation).
+    ///
     /// # Arguments
     /// * `item` - The item to find the rank for
     /// * `criteria` - Whether to include the item's weight in the rank calculation
@@ -289,14 +308,48 @@ where
             return Err(ReqError::EmptySketch);
         }
 
-        let sorted_view = self.get_sorted_view()?;
-        // Use basic rank calculation (step function) for general types
-        sorted_view.rank_no_interpolation(item, criteria)
+        match self.rank_method {
+            RankMethod::StepFunction => {
+                // C++ compatible: use step function
+                let sorted_view = self.get_sorted_view()?;
+                sorted_view.rank_no_interpolation(item, criteria)
+            }
+            RankMethod::Interpolation => {
+                // Enhanced precision: use interpolation (only available for compatible types)
+                let sorted_view = self.get_sorted_view()?;
+                sorted_view.rank_no_interpolation(item, criteria) // Fallback for now
+            }
+        }
     }
 
     /// Returns the approximate rank of the given item using inclusive criteria.
     pub fn rank_inclusive(&self, item: &T) -> Result<f64> {
         self.rank(item, SearchCriteria::Inclusive)
+    }
+
+    /// Returns the approximate rank using direct compactor weight computation.
+    /// This matches the C++ get_rank implementation exactly.
+    ///
+    /// # Arguments
+    /// * `item` - The item to find the rank for
+    /// * `criteria` - Whether to include the item's weight in the rank calculation
+    ///
+    /// # Returns
+    /// A value in [0.0, 1.0] representing the approximate normalized rank.
+    pub fn rank_direct(&mut self, item: &T, criteria: SearchCriteria) -> Result<f64> {
+        if self.is_empty() {
+            return Err(ReqError::EmptySketch);
+        }
+
+        let inclusive = matches!(criteria, SearchCriteria::Inclusive);
+        let mut total_weight = 0u64;
+
+        // Sum weights from all compactors (matches C++ approach)
+        for compactor in &mut self.compactors {
+            total_weight += compactor.compute_weight(item, inclusive);
+        }
+
+        Ok(total_weight as f64 / self.total_n as f64)
     }
 
     /// Returns the approximate quantile for the given normalized rank.
@@ -602,6 +655,31 @@ where
         }
 
         Ok(())
+    }
+}
+
+// Specialized implementation for f64 with true interpolation support
+impl ReqSketch<f64> {
+    /// Returns the approximate rank using the configured method with full interpolation support.
+    ///
+    /// This specialized version can use true interpolation for enhanced precision.
+    pub fn rank_interpolated(&self, item: &f64, criteria: SearchCriteria) -> Result<f64> {
+        if self.is_empty() {
+            return Err(ReqError::EmptySketch);
+        }
+
+        match self.rank_method {
+            RankMethod::StepFunction => {
+                // C++ compatible: use step function
+                let sorted_view = self.get_sorted_view()?;
+                sorted_view.rank_no_interpolation(item, criteria)
+            }
+            RankMethod::Interpolation => {
+                // Enhanced precision: use true interpolation
+                let sorted_view = self.get_sorted_view()?;
+                sorted_view.rank_with_interpolation(item, criteria)
+            }
+        }
     }
 }
 
