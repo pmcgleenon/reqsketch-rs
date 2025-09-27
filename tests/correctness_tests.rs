@@ -17,7 +17,7 @@ mod reference_tests {
 
     #[test]
     fn test_empty_sketch() {
-        let sketch: ReqSketch<f32> = ReqSketch::new();
+        let mut sketch: ReqSketch<f32> = ReqSketch::new();
 
         assert_eq!(sketch.k(), 12);
         assert!(sketch.is_empty());
