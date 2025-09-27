@@ -559,20 +559,7 @@ where
     ///
     /// Returns the lower bound rank estimate with the specified confidence.
     pub fn get_rank_lower_bound(&self, rank: f64, num_std_dev: u8) -> f64 {
-        if self.is_exact_rank(rank) {
-            return rank;
-        }
-
-        let relative = Self::relative_rse_factor() / self.k as f64
-            * match self.rank_accuracy {
-                RankAccuracy::HighRank => 1.0 - rank,
-                RankAccuracy::LowRank => rank,
-            };
-        let fixed = Self::FIXED_RSE_FACTOR / self.k as f64;
-        let lb_rel = rank - num_std_dev as f64 * relative;
-        let lb_fix = rank - num_std_dev as f64 * fixed;
-
-        lb_rel.max(lb_fix)
+        self.compute_rank_lower_bound(self.k, self.compactors.len() as u8, rank, num_std_dev, self.total_n, matches!(self.rank_accuracy, RankAccuracy::HighRank))
     }
 
     /// Returns the upper bound for the rank of a given quantile at the specified confidence level.
@@ -583,20 +570,7 @@ where
     ///
     /// Returns the upper bound rank estimate with the specified confidence.
     pub fn get_rank_upper_bound(&self, rank: f64, num_std_dev: u8) -> f64 {
-        if self.is_exact_rank(rank) {
-            return rank;
-        }
-
-        let relative = Self::relative_rse_factor() / self.k as f64
-            * match self.rank_accuracy {
-                RankAccuracy::HighRank => 1.0 - rank,
-                RankAccuracy::LowRank => rank,
-            };
-        let fixed = Self::FIXED_RSE_FACTOR / self.k as f64;
-        let ub_rel = rank + num_std_dev as f64 * relative;
-        let ub_fix = rank + num_std_dev as f64 * fixed;
-
-        ub_rel.min(ub_fix)
+        self.compute_rank_upper_bound(self.k, self.compactors.len() as u8, rank, num_std_dev, self.total_n, matches!(self.rank_accuracy, RankAccuracy::HighRank))
     }
 
     /// Constants for error calculation matching C++ implementation
@@ -608,19 +582,42 @@ where
         (0.0512 / Self::INIT_NUM_SECTIONS as f64).sqrt()
     }
 
-    /// Determines if a rank should be considered exact (no error bounds needed)
-    fn is_exact_rank(&self, rank: f64) -> bool {
-        let base_cap = self.k as u64 * Self::INIT_NUM_SECTIONS as u64;
-        let num_levels = self.compactors.len() as u8;
+    /// Computes the lower bound rank estimate with the specified confidence level.
+    fn compute_rank_lower_bound(&self, k: u16, num_levels: u8, rank: f64, num_std_dev: u8, n: u64, hra: bool) -> f64 {
+        if self.is_exact_rank_threshold(k, num_levels, rank, n, hra) {
+            return rank;
+        }
+        let relative = Self::relative_rse_factor() / k as f64 * if hra { 1.0 - rank } else { rank };
+        let fixed = Self::FIXED_RSE_FACTOR / k as f64;
+        let lb_rel = rank - num_std_dev as f64 * relative;
+        let lb_fix = rank - num_std_dev as f64 * fixed;
+        lb_rel.max(lb_fix)
+    }
 
-        if num_levels == 1 || self.total_n <= base_cap {
+    /// Computes the upper bound rank estimate with the specified confidence level.
+    fn compute_rank_upper_bound(&self, k: u16, num_levels: u8, rank: f64, num_std_dev: u8, n: u64, hra: bool) -> f64 {
+        if self.is_exact_rank_threshold(k, num_levels, rank, n, hra) {
+            return rank;
+        }
+        let relative = Self::relative_rse_factor() / k as f64 * if hra { 1.0 - rank } else { rank };
+        let fixed = Self::FIXED_RSE_FACTOR / k as f64;
+        let ub_rel = rank + num_std_dev as f64 * relative;
+        let ub_fix = rank + num_std_dev as f64 * fixed;
+        ub_rel.min(ub_fix)
+    }
+
+    /// Determines if a rank should be considered exact based on the exact rank threshold.
+    /// When a rank is exact, no error bounds need to be computed.
+    fn is_exact_rank_threshold(&self, k: u16, num_levels: u8, rank: f64, n: u64, hra: bool) -> bool {
+        let base_cap = k as u64 * Self::INIT_NUM_SECTIONS as u64;
+        if num_levels == 1 || n <= base_cap {
             return true;
         }
-
-        let exact_rank_thresh = base_cap as f64 / self.total_n as f64;
-        match self.rank_accuracy {
-            RankAccuracy::HighRank => rank >= 1.0 - exact_rank_thresh,
-            RankAccuracy::LowRank => rank <= exact_rank_thresh,
+        let exact_rank_thresh = base_cap as f64 / n as f64;
+        if hra {
+            rank >= 1.0 - exact_rank_thresh
+        } else {
+            rank <= exact_rank_thresh
         }
     }
 }
