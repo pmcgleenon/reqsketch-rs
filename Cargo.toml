@@ -1,0 +1,27 @@
+[package]
+name = "reqsketch"
+version = "0.1.0"
+edition = "2021"
+description = "Relative Error Quantiles sketch implementation in Rust"
+license = "Apache-2.0"
+authors = ["Patrick McGleenon"]
+readme = "README.md"
+repository = "https://github.com/pmcgleenon/reqsketch-rs"
+keywords = ["sketch", "quantiles", "streaming", "statistics", "approximation"]
+categories = ["algorithms", "data-structures"]
+
+[lib]
+name = "reqsketch"
+path = "src/lib.rs"
+
+[dependencies]
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[dev-dependencies]
+proptest = "1.0"
+approx = "0.5"
+
+[features]
+default = []
+serde = ["dep:serde"]
