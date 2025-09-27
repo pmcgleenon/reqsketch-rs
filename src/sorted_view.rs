@@ -82,8 +82,8 @@ where
             };
         }
 
-        // Sort by item value
-        weighted_items.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
+        // Sort by item value - use unstable sort for better performance
+        weighted_items.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
 
         let mut items = Vec::with_capacity(weighted_items.len());
         let mut cumulative_weights = Vec::with_capacity(weighted_items.len());

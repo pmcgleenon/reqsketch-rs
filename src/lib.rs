@@ -452,9 +452,10 @@ where
 
     fn needs_compression(&self) -> bool {
         let total_capacity: u32 = self.compactors.iter().map(|c| c.nominal_capacity()).sum();
-        // More conservative compaction to match C++ precision
-        // C++ achieves much higher accuracy, suggesting they retain more items
-        let threshold = (total_capacity as f32 * 1.15).round() as u32; // 15% over-capacity buffer
+        // C++ retains ~3.16x more items than our current implementation
+        // This suggests C++ uses a much more conservative compression threshold
+        // Try matching C++ behavior with a 3x multiplier (conservative compaction)
+        let threshold = total_capacity * 3; // Match C++ retention pattern
         self.num_retained() >= threshold
     }
 
