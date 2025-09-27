@@ -297,6 +297,57 @@ where
 
         result
     }
+
+    /// Computes the weight contribution of this compactor for rank calculation.
+    /// This matches the C++ compute_weight method exactly.
+    ///
+    /// # Arguments
+    /// * `item` - The item to find the weight for
+    /// * `inclusive` - Whether to include the item's weight in the calculation
+    ///
+    /// # Returns
+    /// The weight contributed by this compactor (number of items * 2^lg_weight)
+    pub fn compute_weight(&mut self, item: &T, inclusive: bool) -> u64 {
+        // Ensure items are sorted for binary search (matches C++ behavior)
+        if !self.is_sorted {
+            self.sort();
+        }
+
+        // Perform binary search to find position (matches C++ std::upper_bound/std::lower_bound)
+        let position = if inclusive {
+            // inclusive: use upper_bound (first position where item < items[pos])
+            // This finds the first position where the item would be placed after all equal items
+            match self.items.binary_search_by(|probe| probe.partial_cmp(item).unwrap()) {
+                Ok(pos) => {
+                    // Found exact match, find the last occurrence
+                    let mut end_pos = pos;
+                    while end_pos + 1 < self.items.len() && self.items[end_pos + 1] == *item {
+                        end_pos += 1;
+                    }
+                    end_pos + 1
+                }
+                Err(pos) => pos,
+            }
+        } else {
+            // exclusive: use lower_bound (first position where !(items[pos] < item))
+            // This finds the first position where the item would be placed before all equal items
+            match self.items.binary_search_by(|probe| probe.partial_cmp(item).unwrap()) {
+                Ok(pos) => {
+                    // Found exact match, find the first occurrence
+                    let mut start_pos = pos;
+                    while start_pos > 0 && self.items[start_pos - 1] == *item {
+                        start_pos -= 1;
+                    }
+                    start_pos
+                }
+                Err(pos) => pos,
+            }
+        };
+
+        // Return distance (number of items) shifted by lg_weight
+        // This matches C++: std::distance(begin(), it) << lg_weight_
+        (position as u64) << self.lg_weight
+    }
 }
 
 /// Rounds a float to the nearest even integer, matching C++ implementation.
