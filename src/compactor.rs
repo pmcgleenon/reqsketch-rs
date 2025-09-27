@@ -74,7 +74,13 @@ where
 
     /// Returns the nominal capacity of this compactor.
     pub fn nominal_capacity(&self) -> u32 {
-        self.section_size * self.num_sections as u32
+        // C++ uses MULTIPLIER = 2
+        2 * self.section_size * self.num_sections as u32
+    }
+
+    /// Returns the section size of this compactor.
+    pub fn section_size(&self) -> u32 {
+        self.section_size
     }
 
     /// Returns whether the items are currently sorted.
@@ -155,9 +161,9 @@ where
 
     /// Compacts this compactor and returns the promoted items.
     ///
-    /// This operation reduces the number of items in this compactor by approximately
-    /// half and returns the items that should be promoted to the next level.
-    /// The promoted items will represent ALL the original items at the next level.
+    /// This operation compacts a section of items (not the entire level) and promotes
+    /// approximately half of the compacted items to the next level.
+    /// The weight is conserved exactly: N compacted items -> N/2 promoted items with 2x weight
     pub fn compact(&mut self, _rank_accuracy: RankAccuracy) -> Vec<T> {
         if self.items.is_empty() {
             return Vec::new();
@@ -166,21 +172,27 @@ where
         // Ensure items are sorted
         self.sort();
 
-        // Compact by promoting approximately half the items
-        // The promoted items will represent ALL original items at double weight
-        let mut promoted = Vec::new();
+        // Calculate sections to compact based on state (C++ logic)
+        let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
+        let compaction_range = self.compute_compaction_range(secs_to_compact);
 
-        // Use deterministic selection based on state
-        let start_with_even = (self.state & 1) == 0;
-
-        for (i, item) in self.items.iter().enumerate() {
-            if (i % 2 == 0) == start_with_even {
-                promoted.push(item.clone());
-            }
+        // Must have at least 2 items to compact
+        if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
+            return Vec::new();
         }
 
-        // Clear all items from this level - the promoted items now represent them all
-        self.items.clear();
+        // Ensure enough sections for growth
+        self.ensure_enough_sections();
+
+        // Promote every other item from the compaction range
+        let promoted = self.promote_evens_or_odds(
+            &self.items[compaction_range.0..compaction_range.1],
+            _rank_accuracy
+        );
+
+        // Remove the entire compaction range (both promoted and non-promoted items)
+        // This is the key insight: we remove ALL items in the range, not just the non-promoted ones
+        self.items.drain(compaction_range.0..compaction_range.1);
 
         // Update state
         self.state += 1;
@@ -198,34 +210,61 @@ where
         1u64 << self.lg_weight
     }
 
+    /// Returns the current state for debugging.
+    #[cfg(test)]
+    pub fn state(&self) -> u64 {
+        self.state
+    }
+
+    /// Returns the number of sections for debugging.
+    #[cfg(test)]
+    pub fn num_sections(&self) -> u8 {
+        self.num_sections
+    }
+
     // Private helper methods
 
-    fn ensure_enough_sections(&mut self) {
-        // Check if we need to double the number of sections
-        let threshold = 1u64 << (self.num_sections as u64 - 1);
-        if self.state >= threshold {
+    fn ensure_enough_sections(&mut self) -> bool {
+        let ssr = self.section_size_raw / 2.0_f32.sqrt();
+        let ne = nearest_even(ssr);
+        if self.state >= (1u64 << (self.num_sections - 1)) && ne >= 4 { // MIN_K equivalent
+            self.section_size_raw = ssr;
+            self.section_size = ne;
             self.num_sections *= 2;
-            // Decrease section size by factor of sqrt(2)
-            self.section_size_raw /= 2.0_f32.sqrt();
-            self.section_size = nearest_even(self.section_size_raw);
+            true
+        } else {
+            false
         }
     }
 
-    fn compute_compaction_range(&self, sections_to_compact: u8) -> (usize, usize) {
-        let total_items = self.items.len();
-        let items_per_section = total_items / self.num_sections as usize;
+    fn compute_compaction_range(&self, secs_to_compact: u8) -> (usize, usize) {
+        // Implement C++ logic exactly
+        let nom_capacity = self.nominal_capacity() as usize;
+        let mut non_compact = nom_capacity / 2 + (self.num_sections - secs_to_compact) as usize * self.section_size as usize;
 
-        // For high rank accuracy, compact from the middle-low section
-        // For low rank accuracy, compact from the middle-high section
-        let start_section = match self.rank_accuracy {
-            RankAccuracy::HighRank => self.num_sections / 4,
-            RankAccuracy::LowRank => (self.num_sections * 3) / 4 - sections_to_compact,
+        // Ensure non_compact doesn't exceed items length
+        non_compact = non_compact.min(self.items.len());
+
+        // Make compacted region even (ensure even number of items to compact)
+        if self.items.len() > non_compact && ((self.items.len() - non_compact) & 1) == 1 {
+            non_compact += 1;
+            non_compact = non_compact.min(self.items.len()); // Ensure we don't exceed bounds
+        }
+
+        // For HRA (High Rank Accuracy) vs LRA (Low Rank Accuracy)
+        // This determines which end of the sorted array to compact
+        let (low, high) = match self.rank_accuracy {
+            RankAccuracy::HighRank => {
+                // HRA: compact from the beginning (lower values)
+                (0, (self.items.len() - non_compact).min(self.items.len()))
+            }
+            RankAccuracy::LowRank => {
+                // LRA: compact from the end (higher values)
+                (non_compact.min(self.items.len()), self.items.len())
+            }
         };
 
-        let start = (start_section as usize) * items_per_section;
-        let end = start + (sections_to_compact as usize) * items_per_section;
-
-        (start.min(total_items), end.min(total_items))
+        (low, high)
     }
 
     fn promote_evens_or_odds(&self, items: &[T], _rank_accuracy: RankAccuracy) -> Vec<T> {
@@ -233,16 +272,23 @@ where
             return Vec::new();
         }
 
-        // Use deterministic selection based on state
-        let start_with_even = (self.state & 1) == 0;
+        // Implement C++ promote_evens_or_odds logic exactly
+        // Determine coin flip: for odd state flip coin, for even use random
+        let odds = if (self.state & 1) == 1 {
+            // For odd state, flip the previous coin value (deterministic)
+            !(self.state & 2 == 2) // Use bit 1 as previous coin state
+        } else {
+            // For even state, use deterministic based on state for reproducibility
+            // In C++ this would be random, but for deterministic behavior we use state
+            (self.state >> 2) & 1 == 1
+        };
 
         let mut result = Vec::new();
-        let start_idx = if start_with_even { 0 } else { 1 };
+        let mut i = if odds { 1 } else { 0 };
 
-        for (i, item) in items.iter().enumerate() {
-            if i % 2 == start_idx {
-                result.push(item.clone());
-            }
+        while i < items.len() {
+            result.push(items[i].clone());
+            i += 2; // Skip every other item
         }
 
         result
@@ -250,7 +296,7 @@ where
 }
 
 /// Rounds a float to the nearest even integer, with a minimum of 2.
-fn nearest_even(value: f32) -> u32 {
+pub(crate) fn nearest_even(value: f32) -> u32 {
     let rounded = value.round() as u32;
     let result = if rounded % 2 == 0 {
         rounded
