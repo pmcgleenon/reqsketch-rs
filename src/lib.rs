@@ -290,6 +290,7 @@ where
         }
 
         let sorted_view = self.get_sorted_view()?;
+        // Use basic rank calculation (step function) for general types
         sorted_view.rank_no_interpolation(item, criteria)
     }
 
@@ -580,18 +581,7 @@ where
     }
 }
 
-// Specialized implementation for f64 with interpolation support
-impl ReqSketch<f64> {
-    /// Returns the approximate rank of the given item using interpolation for better accuracy.
-    pub fn rank_interpolated(&self, item: &f64, criteria: SearchCriteria) -> Result<f64> {
-        if self.is_empty() {
-            return Err(ReqError::EmptySketch);
-        }
-
-        let sorted_view = self.get_sorted_view()?;
-        sorted_view.rank_with_interpolation(item, criteria)
-    }
-}
+// Note: f64 gets interpolation via SortedView<f64>::rank() specialization
 
 impl<T> fmt::Display for ReqSketch<T>
 where
