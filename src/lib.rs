@@ -303,7 +303,7 @@ where
     ///
     /// # Returns
     /// A value in [0.0, 1.0] representing the approximate normalized rank.
-    pub fn rank(&self, item: &T, criteria: SearchCriteria) -> Result<f64> {
+    pub fn rank(&mut self, item: &T, criteria: SearchCriteria) -> Result<f64> {
         if self.is_empty() {
             return Err(ReqError::EmptySketch);
         }
@@ -323,7 +323,7 @@ where
     }
 
     /// Returns the approximate rank of the given item using inclusive criteria.
-    pub fn rank_inclusive(&self, item: &T) -> Result<f64> {
+    pub fn rank_inclusive(&mut self, item: &T) -> Result<f64> {
         self.rank(item, SearchCriteria::Inclusive)
     }
 
@@ -360,7 +360,7 @@ where
     ///
     /// # Returns
     /// The approximate quantile value for the given rank.
-    pub fn quantile(&self, rank: f64, criteria: SearchCriteria) -> Result<T> {
+    pub fn quantile(&mut self, rank: f64, criteria: SearchCriteria) -> Result<T> {
         if self.is_empty() {
             return Err(ReqError::EmptySketch);
         }
@@ -374,20 +374,29 @@ where
     }
 
     /// Returns the approximate quantile for the given normalized rank using inclusive criteria.
-    pub fn quantile_inclusive(&self, rank: f64) -> Result<T> {
+    pub fn quantile_inclusive(&mut self, rank: f64) -> Result<T> {
         self.quantile(rank, SearchCriteria::Inclusive)
     }
 
     /// Returns multiple quantiles for the given normalized ranks.
-    pub fn quantiles(&self, ranks: &[f64], criteria: SearchCriteria) -> Result<Vec<T>> {
-        ranks
-            .iter()
-            .map(|&rank| self.quantile(rank, criteria))
-            .collect()
+    pub fn quantiles(&mut self, ranks: &[f64], criteria: SearchCriteria) -> Result<Vec<T>> {
+        if self.is_empty() {
+            return Err(ReqError::EmptySketch);
+        }
+
+        let sorted_view = self.get_sorted_view()?;
+        let mut results = Vec::with_capacity(ranks.len());
+        for &rank in ranks {
+            if !(0.0..=1.0).contains(&rank) {
+                return Err(ReqError::InvalidRank(rank));
+            }
+            results.push(sorted_view.quantile(rank, criteria)?);
+        }
+        Ok(results)
     }
 
     /// Returns the Probability Mass Function (PMF) for the given split points.
-    pub fn pmf(&self, split_points: &[T], criteria: SearchCriteria) -> Result<Vec<f64>> {
+    pub fn pmf(&mut self, split_points: &[T], criteria: SearchCriteria) -> Result<Vec<f64>> {
         if self.is_empty() {
             return Err(ReqError::EmptySketch);
         }
@@ -397,7 +406,7 @@ where
     }
 
     /// Returns the Cumulative Distribution Function (CDF) for the given split points.
-    pub fn cdf(&self, split_points: &[T], criteria: SearchCriteria) -> Result<Vec<f64>> {
+    pub fn cdf(&mut self, split_points: &[T], criteria: SearchCriteria) -> Result<Vec<f64>> {
         if self.is_empty() {
             return Err(ReqError::EmptySketch);
         }
@@ -412,7 +421,7 @@ where
     }
 
     /// Returns a sorted view of the sketch for efficient queries.
-    pub fn sorted_view(&self) -> Result<SortedView<T>> {
+    pub fn sorted_view(&mut self) -> Result<&SortedView<T>> {
         self.get_sorted_view()
     }
 
@@ -427,14 +436,17 @@ where
 
     // Internal methods
 
-    fn get_sorted_view(&self) -> Result<SortedView<T>> {
+    fn get_sorted_view(&mut self) -> Result<&SortedView<T>> {
         if self.is_empty() {
             return Err(ReqError::EmptySketch);
         }
 
-        // Always compute a fresh sorted view for now
-        // TODO: In the future, we could use interior mutability for caching
-        self.compute_sorted_view()
+        // Build and cache the sorted view if not already cached
+        if self.sorted_view_cache.is_none() {
+            self.sorted_view_cache = Some(self.compute_sorted_view()?);
+        }
+
+        Ok(self.sorted_view_cache.as_ref().unwrap())
     }
 
     fn compute_sorted_view(&self) -> Result<SortedView<T>> {
@@ -451,50 +463,26 @@ where
     }
 
     fn needs_compression(&self) -> bool {
-        let total_capacity: u32 = self.compactors.iter().map(|c| c.nominal_capacity()).sum();
-        // C++ retains ~3.16x more items than our current implementation
-        // This suggests C++ uses a much more conservative compression threshold
-        // Try matching C++ behavior with a 3x multiplier (conservative compaction)
-        let threshold = total_capacity * 3; // Match C++ retention pattern
-        self.num_retained() >= threshold
+        // Trigger compaction when any level exceeds its nominal capacity
+        // This matches the original DataSketches behavior and prevents over-retention
+        self.compactors.iter().any(|c| c.num_items() > c.nominal_capacity())
     }
 
     fn compress(&mut self) {
-        // C++ strategy: Use BOTH section growth AND multi-level creation
-        // Keep compacting until global capacity constraints are satisfied
+        // Compact each level that exceeds its nominal capacity
+        // This is more efficient than global capacity checking
+        while let Some(level) = (0..self.compactors.len())
+            .find(|&i| self.compactors[i].num_items() > self.compactors[i].nominal_capacity())
+        {
+            // Perform compaction on the over-capacity level
+            let promoted = self.compactors[level].compact(self.rank_accuracy);
 
-        while self.needs_compression() {
-            let mut compacted_any = false;
-
-            // Try to compact each level, allowing both section growth and level promotion
-            for level in 0..self.compactors.len() {
-                let can_compact = self.compactors[level].num_items() >= 2; // Need at least 2 items to compact
-
-                if can_compact {
-                    // Perform compaction with potential section growth
-                    // This may grow sections internally via ensure_enough_sections()
-                    let promoted = self.compactors[level].compact(self.rank_accuracy);
-
-                    // If we have promoted items, ensure we have a next level
-                    if !promoted.is_empty() {
-                        if level + 1 >= self.compactors.len() {
-                            self.grow();
-                        }
-                        self.compactors[level + 1].merge_sorted(&promoted);
-                    }
-
-                    compacted_any = true;
-
-                    // Check if this single compaction was enough to satisfy capacity constraints
-                    if !self.needs_compression() {
-                        break;
-                    }
+            // If we have promoted items, ensure we have a next level
+            if !promoted.is_empty() {
+                if level + 1 >= self.compactors.len() {
+                    self.grow();
                 }
-            }
-
-            // Safety: if no level could be compacted, break to avoid infinite loop
-            if !compacted_any {
-                break;
+                self.compactors[level + 1].merge_sorted(&promoted);
             }
         }
 
@@ -548,7 +536,7 @@ where
 
     /// Returns a public accessor to the sorted view for testing.
     #[doc(hidden)]
-    pub fn test_get_sorted_view(&self) -> Result<SortedView<T>> {
+    pub fn test_get_sorted_view(&mut self) -> Result<&SortedView<T>> {
         self.get_sorted_view()
     }
 
@@ -661,7 +649,7 @@ impl ReqSketch<f64> {
     /// Returns the approximate rank using the configured method with full interpolation support.
     ///
     /// This specialized version can use true interpolation for enhanced precision.
-    pub fn rank_interpolated(&self, item: &f64, criteria: SearchCriteria) -> Result<f64> {
+    pub fn rank_interpolated(&mut self, item: &f64, criteria: SearchCriteria) -> Result<f64> {
         if self.is_empty() {
             return Err(ReqError::EmptySketch);
         }

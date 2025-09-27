@@ -28,15 +28,13 @@ mod global_capacity_tests {
     }
 
     #[test]
-    fn test_individual_level_over_capacity_allowed() {
+    fn test_individual_level_capacity_management() {
         let mut sketch = ReqSketch::new();
 
-        // Add enough items to trigger over-capacity at individual levels
+        // Add enough items to trigger multiple levels with per-level compression
         for i in 0..50000 {
             sketch.update(i as f64);
         }
-
-        let mut found_over_capacity = false;
 
         for (level, items, capacity, _weight) in sketch.level_info() {
             if items > 0 {
@@ -45,20 +43,12 @@ mod global_capacity_tests {
                 println!("Level {}: {}/{} items ({}x capacity)",
                         level, items, capacity, utilization);
 
-                // Individual levels should be allowed to exceed capacity
-                if utilization > 1.2 {
-                    found_over_capacity = true;
-                }
-
-                // But not excessively (C++ shows max ~3x)
-                assert!(utilization <= 4.0,
-                       "Level {} has excessive over-capacity: {}x", level, utilization);
+                // With per-level compression, levels should not significantly exceed capacity
+                // Allow slight over-capacity due to timing of compaction triggers
+                assert!(utilization <= 1.1,
+                       "Level {} exceeds expected capacity: {}x", level, utilization);
             }
         }
-
-        // We should see some levels operating over their nominal capacity
-        assert!(found_over_capacity,
-               "Expected to find levels operating over nominal capacity, but none found");
     }
 
     #[test]
