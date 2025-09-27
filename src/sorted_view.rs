@@ -90,23 +90,16 @@ where
 
         match criteria {
             SearchCriteria::Inclusive => {
-                // For consistency with quantile method, use the logic that matches
-                // how quantile selects items based on cumulative weights
-
-                // Find the first occurrence of the target item
+                // Find the last occurrence of items <= target (standard inclusive rank)
+                let mut cumulative_weight = 0u64;
                 for i in 0..self.items.len() {
-                    if self.items[i] == *item {
-                        // Return the rank corresponding to this item's cumulative weight
-                        return Ok(self.cumulative_weights[i] as f64 / self.total_weight as f64);
-                    } else if self.items[i] > *item {
-                        // Item not found - return the rank just before this position
-                        let prev_weight = if i == 0 { 0 } else { self.cumulative_weights[i - 1] };
-                        return Ok(prev_weight as f64 / self.total_weight as f64);
+                    if self.items[i] <= *item {
+                        cumulative_weight = self.cumulative_weights[i];
+                    } else {
+                        break;
                     }
                 }
-
-                // All items are smaller than target
-                Ok(1.0)
+                Ok(cumulative_weight as f64 / self.total_weight as f64)
             }
             SearchCriteria::Exclusive => {
                 // Find the last occurrence of items < target (strictly less than)
@@ -152,9 +145,19 @@ where
         }
 
         // Convert rank to target cumulative weight
+        // REQ sketch quantile calculation: match the reference implementation behavior
         let target_weight = match criteria {
-            SearchCriteria::Inclusive => (rank * self.total_weight as f64).ceil() as u64,
-            SearchCriteria::Exclusive => (rank * self.total_weight as f64) as u64,
+            SearchCriteria::Inclusive => {
+                // For inclusive quantiles, we want the item that contains the rank
+                // rank * (n-1) gives us the 0-based position, then +1 for 1-based cumulative weight
+                let target_pos = rank * (self.total_weight - 1) as f64;
+                target_pos.floor() as u64 + 1 // Use floor instead of round to get lower bound
+            },
+            SearchCriteria::Exclusive => {
+                // For exclusive quantiles, we want the item just above rank * n
+                let target_pos = rank * self.total_weight as f64;
+                target_pos.ceil() as u64
+            },
         };
 
         // Find the first item whose cumulative weight >= target_weight
