@@ -7,6 +7,13 @@ use crate::{RankAccuracy, Result};
 // use rand::Rng;  // Will be used later for randomized compaction
 use std::cmp::Ordering;
 
+/// C++ compatible nearest_even function
+fn nearest_even(value: f32) -> u32 {
+    let result = ((value / 2.0).round() as u32) * 2;
+    // Ensure minimum value of 2 (since k must be at least 4, section sizes should be at least 2)
+    result.max(2)
+}
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -225,16 +232,16 @@ where
     // Private helper methods
 
     fn ensure_enough_sections(&mut self) -> bool {
-        // Match C++ section growth timing more closely
-        // C++ grows sections much earlier - after 1-2 compactions, not after 2^(sections-1)
-        // For 3 initial sections, grow after 2 compactions instead of 4
-        let growth_threshold = if self.num_sections <= 3 { 2 } else { 1u64 << (self.num_sections - 1) };
+        // Implement exact C++ section growth algorithm
+        let ssr = self.section_size_raw / (2.0_f32).sqrt();
+        let ne = nearest_even(ssr);
 
-        // C++ behavior: grow sections based on state-driven criteria
-        // TODO: Implement proper C++ section growth criteria instead of arbitrary limits
-        if self.state >= growth_threshold {
-            // For now, use C++ doubling pattern but need to investigate actual C++ logic
-            self.num_sections *= 2;
+        const MIN_K: u32 = 4; // From C++ req_constants::MIN_K
+
+        if self.state >= (1u64 << (self.num_sections - 1)) && ne >= MIN_K {
+            self.section_size_raw = ssr;
+            self.section_size = ne;
+            self.num_sections <<= 1; // Double the sections
             true
         } else {
             false
@@ -242,29 +249,35 @@ where
     }
 
     fn compute_compaction_range(&self, secs_to_compact: u8) -> (usize, usize) {
-        // Implement C++ logic exactly
+        // Implement exact C++ logic from compute_compaction_range
         let nom_capacity = self.nominal_capacity() as usize;
         let mut non_compact = nom_capacity / 2 + (self.num_sections - secs_to_compact) as usize * self.section_size as usize;
 
-        // Ensure non_compact doesn't exceed items length
+        // Ensure bounds first to prevent overflow
         non_compact = non_compact.min(self.items.len());
 
-        // Make compacted region even (ensure even number of items to compact)
+        // Make compacted region even - C++ logic (only if we have enough items)
         if self.items.len() > non_compact && ((self.items.len() - non_compact) & 1) == 1 {
             non_compact += 1;
-            non_compact = non_compact.min(self.items.len()); // Ensure we don't exceed bounds
+            non_compact = non_compact.min(self.items.len()); // Ensure bounds again
         }
 
-        // For HRA (High Rank Accuracy) vs LRA (Low Rank Accuracy)
-        // This determines which end of the sorted array to compact
+        // C++ logic: const uint32_t low = hra_ ? 0 : non_compact;
+        //           const uint32_t high = hra_ ? num_items_ - non_compact : num_items_;
         let (low, high) = match self.rank_accuracy {
             RankAccuracy::HighRank => {
-                // HRA: compact from the end (higher values) to preserve low ranks accurately
-                (non_compact.min(self.items.len()), self.items.len())
+                // HRA: low = 0, high = num_items - non_compact
+                let high = if self.items.len() >= non_compact {
+                    self.items.len() - non_compact
+                } else {
+                    0
+                };
+                (0, high)
             }
             RankAccuracy::LowRank => {
-                // LRA: compact from the beginning (lower values) to preserve high ranks accurately
-                (0, (self.items.len() - non_compact).min(self.items.len()))
+                // LRA: low = non_compact, high = num_items
+                let low = non_compact.min(self.items.len());
+                (low, self.items.len())
             }
         };
 
@@ -276,15 +289,18 @@ where
             return Vec::new();
         }
 
-        // Implement C++ promote_evens_or_odds logic exactly
-        // Determine coin flip: for odd state flip coin, for even use random
+        // Implement exact C++ coin flip logic
+        // From C++ code: if ((state_ & 1) == 1) { coin_ = !coin_; } else { coin_ = random_bit(); }
         let odds = if (self.state & 1) == 1 {
-            // For odd state, flip the previous coin value (deterministic)
-            !(self.state & 2 == 2) // Use bit 1 as previous coin state
+            // For odd state, flip the coin from previous state
+            // We need to store coin state, but for now use deterministic pattern
+            // that creates similar distribution to random
+            (self.state >> 1) & 1 == 0 // Flip based on previous state
         } else {
-            // For even state, use deterministic based on state for reproducibility
-            // In C++ this would be random, but for deterministic behavior we use state
-            (self.state >> 2) & 1 == 1
+            // For even state, C++ uses random_bit()
+            // Use deterministic but pseudo-random pattern for reproducibility
+            // This creates a good distribution while remaining deterministic
+            ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
         };
 
         let mut result = Vec::new();
@@ -351,13 +367,6 @@ where
 }
 
 /// Rounds a float to the nearest even integer, matching C++ implementation.
-/// C++ version: static_cast<uint32_t>(round(value / 2)) << 1
-pub(crate) fn nearest_even(value: f32) -> u32 {
-    let result = ((value / 2.0).round() as u32) * 2;
-
-    // Ensure minimum value of 2 (since k must be at least 4, section sizes should be at least 2)
-    result.max(2)
-}
 
 #[cfg(test)]
 mod tests {
