@@ -212,6 +212,11 @@ where
         self.items.iter()
     }
 
+    /// Returns a slice of items for zero-allocation iteration.
+    pub(crate) fn items_slice(&self) -> &[T] {
+        &self.items
+    }
+
     /// Returns the weight (2^lg_weight) for items in this compactor.
     pub fn weight(&self) -> u64 {
         1u64 << self.lg_weight
