@@ -49,6 +49,13 @@ pub mod sorted_view;
 #[cfg(test)]
 mod debug_ensure_sections;
 
+#[cfg(test)]
+mod test_all_quantiles;
+#[cfg(test)]
+mod test_error_bounds;
+#[cfg(test)]
+mod test_detailed_comparison;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -393,17 +400,12 @@ where
     }
 
     fn compress(&mut self) {
-        let mut level = 0;
-        while level < self.compactors.len() {
-            let needs_compaction = {
-                let compactor = &self.compactors[level];
-                // Allow more over-capacity like C++ before compacting
-                // C++ shows level 0 with 230/144 items = 160% utilization, try higher threshold
-                let threshold = (compactor.nominal_capacity() as f32 * 2.0).round() as u32;
-                compactor.num_items() >= threshold
-            };
+        // Find the highest level that can be compacted to reduce global capacity usage
+        // Start from bottom and compact the first level that has enough items
+        for level in 0..self.compactors.len() {
+            let can_compact = self.compactors[level].num_items() >= 2; // Need at least 2 items to compact
 
-            if needs_compaction {
+            if can_compact {
                 // Ensure we have a next level
                 if level + 1 >= self.compactors.len() {
                     self.grow();
@@ -412,9 +414,12 @@ where
                 // Compact current level and promote to next
                 let promoted = self.compactors[level].compact(self.rank_accuracy);
                 self.compactors[level + 1].merge_sorted(&promoted);
-            }
 
-            level += 1;
+                // After one compaction, check if we still need to compress
+                if !self.needs_compression() {
+                    break;
+                }
+            }
         }
 
         // Invalidate cache
@@ -431,6 +436,117 @@ where
     #[cfg(test)]
     pub fn debug_compactor_info(&self) -> Vec<(u8, u32, u32)> {
         self.compactors.iter().map(|c| (c.lg_weight(), c.num_items(), c.nominal_capacity())).collect()
+    }
+
+    /// Returns the total number of retained items across all levels.
+    /// This is useful for testing global capacity constraints.
+    #[doc(hidden)]
+    pub fn total_retained_items(&self) -> u32 {
+        self.compactors.iter().map(|c| c.num_items()).sum()
+    }
+
+    /// Returns the total nominal capacity across all levels.
+    /// This is useful for testing global capacity constraints.
+    #[doc(hidden)]
+    pub fn total_nominal_capacity(&self) -> u32 {
+        self.compactors.iter().map(|c| c.nominal_capacity()).sum()
+    }
+
+    /// Returns information about each level: (level, items, capacity, weight).
+    /// This is useful for testing level structure and over-capacity behavior.
+    #[doc(hidden)]
+    pub fn level_info(&self) -> Vec<(usize, u32, u32, u64)> {
+        self.compactors.iter().enumerate()
+            .map(|(i, c)| (i, c.num_items(), c.nominal_capacity(), c.weight()))
+            .collect()
+    }
+
+    /// Returns the computed total weight by summing level weights.
+    /// This is useful for testing weight conservation.
+    #[doc(hidden)]
+    pub fn computed_total_weight(&self) -> u64 {
+        self.compactors.iter()
+            .map(|c| c.num_items() as u64 * c.weight())
+            .sum()
+    }
+
+    /// Returns a public accessor to the sorted view for testing.
+    #[doc(hidden)]
+    pub fn test_get_sorted_view(&self) -> Result<SortedView<T>> {
+        self.get_sorted_view()
+    }
+
+    /// Returns the lower bound for the rank of a given quantile at the specified confidence level.
+    ///
+    /// # Arguments
+    /// * `rank` - The rank to compute the lower bound for (0.0 to 1.0)
+    /// * `num_std_dev` - Number of standard deviations for confidence level (1, 2, or 3)
+    ///
+    /// Returns the lower bound rank estimate with the specified confidence.
+    pub fn get_rank_lower_bound(&self, rank: f64, num_std_dev: u8) -> f64 {
+        if self.is_exact_rank(rank) {
+            return rank;
+        }
+
+        let relative = Self::relative_rse_factor() / self.k as f64
+            * match self.rank_accuracy {
+                RankAccuracy::HighRank => 1.0 - rank,
+                RankAccuracy::LowRank => rank,
+            };
+        let fixed = Self::FIXED_RSE_FACTOR / self.k as f64;
+        let lb_rel = rank - num_std_dev as f64 * relative;
+        let lb_fix = rank - num_std_dev as f64 * fixed;
+
+        lb_rel.max(lb_fix).max(0.0)
+    }
+
+    /// Returns the upper bound for the rank of a given quantile at the specified confidence level.
+    ///
+    /// # Arguments
+    /// * `rank` - The rank to compute the upper bound for (0.0 to 1.0)
+    /// * `num_std_dev` - Number of standard deviations for confidence level (1, 2, or 3)
+    ///
+    /// Returns the upper bound rank estimate with the specified confidence.
+    pub fn get_rank_upper_bound(&self, rank: f64, num_std_dev: u8) -> f64 {
+        if self.is_exact_rank(rank) {
+            return rank;
+        }
+
+        let relative = Self::relative_rse_factor() / self.k as f64
+            * match self.rank_accuracy {
+                RankAccuracy::HighRank => 1.0 - rank,
+                RankAccuracy::LowRank => rank,
+            };
+        let fixed = Self::FIXED_RSE_FACTOR / self.k as f64;
+        let ub_rel = rank + num_std_dev as f64 * relative;
+        let ub_fix = rank + num_std_dev as f64 * fixed;
+
+        ub_rel.min(ub_fix).min(1.0)
+    }
+
+    /// Constants for error calculation matching C++ implementation
+    const FIXED_RSE_FACTOR: f64 = 0.084;
+    const INIT_NUM_SECTIONS: u8 = 3;
+
+    /// Calculates the relative RSE factor used in error bounds
+    fn relative_rse_factor() -> f64 {
+        (0.0512 / Self::INIT_NUM_SECTIONS as f64).sqrt()
+    }
+
+    /// Determines if a rank should be considered exact (no error bounds needed)
+    fn is_exact_rank(&self, rank: f64) -> bool {
+        let base_cap = self.k as u64 * Self::INIT_NUM_SECTIONS as u64;
+        let num_levels = self.compactors.len() as u8;
+
+        if num_levels == 1 || self.total_n <= base_cap {
+            return true;
+        }
+
+        let exact_rank_thresh = base_cap as f64 / self.total_n as f64;
+        match self.rank_accuracy {
+            RankAccuracy::HighRank => rank >= 1.0 - exact_rank_thresh,
+            RankAccuracy::LowRank => rank <= exact_rank_thresh,
+        }
     }
 }
 

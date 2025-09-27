@@ -295,16 +295,10 @@ where
     }
 }
 
-/// Rounds a float to the nearest even integer, with a minimum of 2.
+/// Rounds a float to the nearest even integer, matching C++ implementation.
+/// C++ version: static_cast<uint32_t>(round(value / 2)) << 1
 pub(crate) fn nearest_even(value: f32) -> u32 {
-    let rounded = value.round() as u32;
-    let result = if rounded % 2 == 0 {
-        rounded
-    } else if value > rounded as f32 {
-        rounded + 1
-    } else {
-        rounded.saturating_sub(1)
-    };
+    let result = ((value / 2.0).round() as u32) * 2;
 
     // Ensure minimum value of 2 (since k must be at least 4, section sizes should be at least 2)
     result.max(2)
@@ -346,10 +340,11 @@ mod tests {
     fn test_nearest_even() {
         assert_eq!(nearest_even(1.0), 2); // minimum of 2
         assert_eq!(nearest_even(2.0), 2);
-        assert_eq!(nearest_even(3.0), 2); // 3 rounds to 2 (even), min 2
+        assert_eq!(nearest_even(3.0), 4); // 3/2=1.5, round(1.5)=2, 2*2=4 (C++ behavior)
         assert_eq!(nearest_even(4.0), 4);
         assert_eq!(nearest_even(4.6), 4);
         assert_eq!(nearest_even(5.6), 6);
+        assert_eq!(nearest_even(13.0), 14); // 13/2=6.5, round(6.5)=7, 7*2=14 (C++ behavior)
     }
 
     #[test]
