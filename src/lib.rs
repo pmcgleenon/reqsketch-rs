@@ -47,14 +47,15 @@ pub mod iter;
 pub mod sorted_view;
 
 #[cfg(test)]
-mod debug_ensure_sections;
-
-#[cfg(test)]
 mod test_all_quantiles;
 #[cfg(test)]
 mod test_error_bounds;
 #[cfg(test)]
 mod test_detailed_comparison;
+#[cfg(test)]
+mod test_comprehensive_rank_accuracy;
+#[cfg(test)]
+mod test_hra_vs_lra_quantiles;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -396,29 +397,47 @@ where
 
     fn needs_compression(&self) -> bool {
         let total_capacity: u32 = self.compactors.iter().map(|c| c.nominal_capacity()).sum();
-        self.num_retained() >= total_capacity
+        // Allow some over-capacity to match C++ behavior (they use ~95% utilization)
+        let threshold = (total_capacity as f32 * 1.05).round() as u32; // 5% over-capacity buffer
+        self.num_retained() >= threshold
     }
 
     fn compress(&mut self) {
-        // Find the highest level that can be compacted to reduce global capacity usage
-        // Start from bottom and compact the first level that has enough items
-        for level in 0..self.compactors.len() {
-            let can_compact = self.compactors[level].num_items() >= 2; // Need at least 2 items to compact
+        // C++ strategy: Use BOTH section growth AND multi-level creation
+        // Keep compacting until global capacity constraints are satisfied
 
-            if can_compact {
-                // Ensure we have a next level
-                if level + 1 >= self.compactors.len() {
-                    self.grow();
+        while self.needs_compression() {
+            let mut compacted_any = false;
+
+            // Try to compact each level, allowing both section growth and level promotion
+            for level in 0..self.compactors.len() {
+                let can_compact = self.compactors[level].num_items() >= 2; // Need at least 2 items to compact
+
+                if can_compact {
+                    // Perform compaction with potential section growth
+                    // This may grow sections internally via ensure_enough_sections()
+                    let promoted = self.compactors[level].compact(self.rank_accuracy);
+
+                    // If we have promoted items, ensure we have a next level
+                    if !promoted.is_empty() {
+                        if level + 1 >= self.compactors.len() {
+                            self.grow();
+                        }
+                        self.compactors[level + 1].merge_sorted(&promoted);
+                    }
+
+                    compacted_any = true;
+
+                    // Check if this single compaction was enough to satisfy capacity constraints
+                    if !self.needs_compression() {
+                        break;
+                    }
                 }
+            }
 
-                // Compact current level and promote to next
-                let promoted = self.compactors[level].compact(self.rank_accuracy);
-                self.compactors[level + 1].merge_sorted(&promoted);
-
-                // After one compaction, check if we still need to compress
-                if !self.needs_compression() {
-                    break;
-                }
+            // Safety: if no level could be compacted, break to avoid infinite loop
+            if !compacted_any {
+                break;
             }
         }
 
