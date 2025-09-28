@@ -17,6 +17,7 @@ path = "src/lib.rs"
 [dependencies]
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"], optional = true }
+dhat = { version = "0.3", optional = true }
 
 [dev-dependencies]
 proptest = "1.0"
@@ -28,6 +29,7 @@ rand_distr = "0.4"
 [features]
 default = []
 serde = ["dep:serde"]
+dhat-heap = ["dhat"]
 
 [profile.release]
 debug = true

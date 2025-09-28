@@ -90,11 +90,13 @@ where
             rank_accuracy: self.rank_accuracy,
             rank_method: self.rank_method,
             total_n: 0,
+            max_nom_size: 0,
+            num_retained: 0,
+            compactors: Vec::new(),
+            promotion_buf: Vec::with_capacity(self.k as usize), // Pre-allocate based on k
             min_item: None,
             max_item: None,
-            compactors: Vec::new(),
             sorted_view_cache: None,
-            promotion_buf: Vec::with_capacity(self.k as usize), // Pre-allocate based on k
         })
     }
 

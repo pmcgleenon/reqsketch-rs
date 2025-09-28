@@ -24,25 +24,30 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Compactor<T> {
-    /// The level of this compactor (0 = base level)
-    lg_weight: u8,
-    /// Whether this compactor is configured for high rank accuracy
-    rank_accuracy: RankAccuracy,
-    /// Raw section size (may be fractional)
-    section_size_raw: f32,
-    /// Actual section size (rounded to integer)
-    section_size: u32,
-    /// Number of sections in this compactor
-    num_sections: u8,
-    /// State for deterministic compaction
-    state: u64,
+    // HOT FIELDS - accessed every insert/compaction, grouped for cache locality
     /// Current items in the compactor
     items: Vec<T>,
     /// Whether items are currently sorted
     is_sorted: bool,
+    /// State for deterministic compaction
+    state: u64,
     /// Reusable scratch buffer for compaction operations
     #[cfg_attr(feature = "serde", serde(skip))]
     scratch_buffer: Vec<T>,
+
+    // WARM FIELDS - used during compaction calculations
+    /// Actual section size (rounded to integer)
+    section_size: u32,
+    /// Number of sections in this compactor
+    num_sections: u8,
+    /// The level of this compactor (0 = base level)
+    lg_weight: u8,
+
+    // COLD FIELDS - configuration, rarely accessed after construction
+    /// Whether this compactor is configured for high rank accuracy
+    rank_accuracy: RankAccuracy,
+    /// Raw section size (may be fractional)
+    section_size_raw: f32,
 }
 
 impl<T> Compactor<T>
@@ -64,15 +69,20 @@ where
         let nominal: usize = (2 * section_size * num_sections as u32) as usize;
 
         Self {
-            lg_weight,
-            rank_accuracy,
-            section_size_raw,
-            section_size,
-            num_sections,
-            state: 0,
+            // HOT FIELDS first
             items: Vec::with_capacity(nominal),
             is_sorted: true, // Start sorted (empty)
+            state: 0,
             scratch_buffer: Vec::with_capacity(nominal / 2 + 8), // typical promotion size
+
+            // WARM FIELDS
+            section_size,
+            num_sections,
+            lg_weight,
+
+            // COLD FIELDS
+            rank_accuracy,
+            section_size_raw,
         }
     }
 
@@ -214,31 +224,22 @@ where
             ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
         };
 
-        // Write promoted items directly into `out` using raw-pointer reads to avoid borrow conflicts.
+        // Build promoted items directly into output buffer (no alloc)
         out.clear();
         let (start, end) = compaction_range;
-        let base_ptr = self.items.as_ptr();
         let mut i = start + if odds { 1 } else { 0 };
-        // SAFETY: we only read from `self.items[start..end]` and do not mutate `self.items` until after this loop.
         while i < end {
-            unsafe {
-                let r = &*base_ptr.add(i);
-                out.push(r.clone());
-            }
+            out.push(self.items[i].clone()); // TODO: use Copy fast-path for numeric types
             i += 2;
         }
 
-        // Remove the compacted range in-place: shift tail left and truncate (no allocation).
+        // Remove the compacted range in-place by rotating elements left
         let removed = end - start;
         if end < self.items.len() {
-            // SAFETY: We're moving non-overlapping ranges and ensuring bounds are valid
-            unsafe {
-                let ptr = self.items.as_mut_ptr();
-                std::ptr::copy(ptr.add(end), ptr.add(start), self.items.len() - end);
-            }
+            // Use rotate_left to move tail elements to fill the gap
+            self.items[start..].rotate_left(removed);
         }
-        let new_len = self.items.len() - removed;
-        self.items.truncate(new_len);
+        self.items.truncate(self.items.len() - removed);
 
         // Update state
         self.state += 1;
@@ -445,6 +446,113 @@ where
         // Return distance (number of items) shifted by lg_weight
         // This matches C++: std::distance(begin(), it) << lg_weight_
         (position as u64) << self.lg_weight
+    }
+}
+
+// Specialized implementations for Copy types (numeric fast-path)
+impl<T> Compactor<T>
+where
+    T: Copy + PartialOrd + Clone,
+{
+    /// Fast compaction for Copy types - avoids cloning
+    pub fn compact_into_fast(&mut self, _rank_accuracy: RankAccuracy, out: &mut Vec<T>) {
+        if self.items.is_empty() {
+            out.clear();
+            return;
+        }
+
+        // Calculate sections to compact based on state (C++ logic)
+        let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
+        let compaction_range = self.compute_compaction_range(secs_to_compact);
+
+        // Sort only the compaction range (avoid sorting the whole level)
+        self.items[compaction_range.0..compaction_range.1]
+            .sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        self.is_sorted = false; // level as a whole might no longer be fully sorted
+
+        // Must have at least 2 items to compact
+        if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
+            out.clear();
+            return;
+        }
+
+        // Ensure enough sections for growth
+        self.ensure_enough_sections();
+
+        // Even/odd choice (same logic you had)
+        let odds = if (self.state & 1) == 1 {
+            (self.state >> 1) & 1 == 0
+        } else {
+            ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
+        };
+
+        // Build promoted items directly into output buffer (NO CLONE for Copy types)
+        out.clear();
+        let (start, end) = compaction_range;
+        let mut i = start + if odds { 1 } else { 0 };
+        while i < end {
+            out.push(self.items[i]); // Direct copy, no clone() call!
+            i += 2;
+        }
+
+        // Remove the compacted range in-place: shift tail left and truncate (no allocation).
+        let removed = end - start;
+        if end < self.items.len() {
+            // Use copy for Copy types - no need for unsafe
+            self.items.copy_within(end.., start);
+        }
+        let new_len = self.items.len() - removed;
+        self.items.truncate(new_len);
+
+        // Update state
+        self.state += 1;
+    }
+
+    /// Fast merge for Copy types - avoids cloning in merge operations
+    pub fn merge_sorted_fast(&mut self, items: &[T]) {
+        if items.is_empty() {
+            return;
+        }
+
+        if self.items.is_empty() {
+            self.items.extend_from_slice(items);
+            self.is_sorted = true;
+            return;
+        }
+
+        // Ensure sorted on both inputs by contract
+        let total = self.items.len() + items.len();
+        self.scratch_buffer.clear();
+        if self.scratch_buffer.capacity() < total {
+            self.scratch_buffer.reserve(total - self.scratch_buffer.capacity());
+        }
+
+        let (mut i, mut j) = (0usize, 0usize);
+        let (a, b) = (&self.items, items);
+
+        // Two-pointer merge into scratch buffer - NO CLONE for Copy types
+        while i < a.len() && j < b.len() {
+            if a[i].partial_cmp(&b[j]).unwrap_or(std::cmp::Ordering::Equal).is_le() {
+                self.scratch_buffer.push(a[i]); // Direct copy
+                i += 1;
+            } else {
+                self.scratch_buffer.push(b[j]); // Direct copy
+                j += 1;
+            }
+        }
+
+        // Add remaining elements - no clone needed
+        if i < a.len() {
+            self.scratch_buffer.extend_from_slice(&a[i..]);
+        }
+        if j < b.len() {
+            self.scratch_buffer.extend_from_slice(&b[j..]);
+        }
+
+        // Swap scratch buffer with items (zero-copy)
+        self.items.clear();
+        std::mem::swap(&mut self.items, &mut self.scratch_buffer);
+        self.is_sorted = true;
     }
 }
 
