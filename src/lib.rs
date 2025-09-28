@@ -140,6 +140,8 @@ pub struct ReqSketch<T> {
     max_item: Option<T>,
     compactors: Vec<compactor::Compactor<T>>,
     sorted_view_cache: Option<SortedView<T>>,
+    /// Reusable buffer for promotions to avoid per-compaction allocation.
+    promotion_buf: Vec<T>,
 }
 
 impl<T> ReqSketch<T>
@@ -150,7 +152,9 @@ where
     ///
     /// Uses k=12 (roughly 1% relative error at 95% confidence) and high rank accuracy.
     pub fn new() -> Self {
-        ReqSketchBuilder::new().build().expect("Default parameters should always be valid")
+        let mut s = ReqSketchBuilder::new().build().expect("Default parameters should always be valid");
+        s.promotion_buf = Vec::new();
+        s
     }
 
     /// Creates a new REQ sketch with the specified k parameter.
@@ -159,7 +163,9 @@ where
     /// * `k` - Controls size and error of the sketch. Must be even and in range [4, 1024].
     ///         Value of 12 roughly corresponds to 1% relative error at 95% confidence.
     pub fn with_k(k: u16) -> Result<Self> {
-        ReqSketchBuilder::new().k(k)?.build()
+        let mut s = ReqSketchBuilder::new().k(k)?.build()?;
+        s.promotion_buf = Vec::new();
+        Ok(s)
     }
 
     /// Returns a new builder for constructing a REQ sketch with custom parameters.
@@ -518,14 +524,16 @@ where
             .find(|&i| self.compactors[i].num_items() > self.compactors[i].nominal_capacity())
         {
             // Perform compaction on the over-capacity level
-            let promoted = self.compactors[level].compact(self.rank_accuracy);
+            // Compact into reusable promotion buffer (no allocation)
+            self.promotion_buf.clear();
+            self.compactors[level].compact_into(self.rank_accuracy, &mut self.promotion_buf);
 
             // If we have promoted items, ensure we have a next level
-            if !promoted.is_empty() {
+            if !self.promotion_buf.is_empty() {
                 if level + 1 >= self.compactors.len() {
                     self.grow();
                 }
-                self.compactors[level + 1].merge_sorted(&promoted);
+                self.compactors[level + 1].merge_sorted(&self.promotion_buf);
             }
         }
 
