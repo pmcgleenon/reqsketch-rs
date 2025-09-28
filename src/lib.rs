@@ -136,12 +136,16 @@ pub struct ReqSketch<T> {
     rank_accuracy: RankAccuracy,
     rank_method: RankMethod,
     total_n: u64,
-    min_item: Option<T>,
-    max_item: Option<T>,
+    /// Total nominal capacity across all levels (C++ style)
+    max_nom_size: u32,
+    /// Total retained items across all levels (C++ style)
+    num_retained: u32,
     compactors: Vec<compactor::Compactor<T>>,
-    sorted_view_cache: Option<SortedView<T>>,
     /// Reusable buffer for promotions to avoid per-compaction allocation.
     promotion_buf: Vec<T>,
+    min_item: Option<T>,
+    max_item: Option<T>,
+    sorted_view_cache: Option<SortedView<T>>,
 }
 
 impl<T> ReqSketch<T>
@@ -152,9 +156,7 @@ where
     ///
     /// Uses k=12 (roughly 1% relative error at 95% confidence) and high rank accuracy.
     pub fn new() -> Self {
-        let mut s = ReqSketchBuilder::new().build().expect("Default parameters should always be valid");
-        s.promotion_buf = Vec::with_capacity(12); // Default k=12
-        s
+        ReqSketchBuilder::new().build().expect("Default parameters should always be valid")
     }
 
     /// Creates a new REQ sketch with the specified k parameter.
@@ -163,9 +165,7 @@ where
     /// * `k` - Controls size and error of the sketch. Must be even and in range [4, 1024].
     ///         Value of 12 roughly corresponds to 1% relative error at 95% confidence.
     pub fn with_k(k: u16) -> Result<Self> {
-        let mut s = ReqSketchBuilder::new().k(k)?.build()?;
-        s.promotion_buf = Vec::with_capacity(12); // Default k=12
-        Ok(s)
+        ReqSketchBuilder::new().k(k)?.build()
     }
 
     /// Returns a new builder for constructing a REQ sketch with custom parameters.
@@ -216,13 +216,15 @@ where
         // Add to level 0 compactor
         self.compactors[0].append(item);
         self.total_n += 1;
+        // C++ style: increment num_retained and check global capacity
+        self.num_retained += 1;
 
-        // Compress if needed
-        if self.needs_compression() {
+        // Compress if needed (C++ style: when num_retained == max_nom_size)
+        if self.num_retained == self.max_nom_size {
             self.compress();
         }
 
-        // Invalidate sorted view cache
+        // Invalidate cache
         self.sorted_view_cache = None;
     }
 
@@ -515,19 +517,17 @@ where
     }
 
     fn needs_compression(&self) -> bool {
-        // Trigger compaction when any level exceeds its nominal capacity
-        // This matches the original DataSketches behavior and prevents over-retention
-        self.compactors.iter().any(|c| c.num_items() > c.nominal_capacity())
+        // C++ style: Only compact when total retained == total nominal capacity
+        self.num_retained >= self.max_nom_size
     }
 
     fn compress(&mut self) {
-        // Compact each level that exceeds its nominal capacity
-        // This is more efficient than global capacity checking
+        // C++ style: compact levels that are >= their nominal capacity
         while let Some(level) = (0..self.compactors.len())
-            .find(|&i| self.compactors[i].num_items() > self.compactors[i].nominal_capacity())
+            .find(|&i| self.compactors[i].num_items() >= self.compactors[i].nominal_capacity())
         {
             // Perform compaction on the over-capacity level
-            // Compact into reusable promotion buffer (no allocation)
+            // Compact into reusable promotion buffer (no allocation, fast path)
             self.promotion_buf.clear();
             self.compactors[level].compact_into(self.rank_accuracy, &mut self.promotion_buf);
 
@@ -540,6 +540,10 @@ where
             }
         }
 
+        // Update global counters after compaction (C++ style)
+        self.update_max_nom_size();
+        self.update_num_retained();
+
         // Invalidate cache
         self.sorted_view_cache = None;
     }
@@ -548,6 +552,22 @@ where
         let level = self.compactors.len() as u8;
         let compactor = compactor::Compactor::new(level, self.k, self.rank_accuracy);
         self.compactors.push(compactor);
+        // Update global capacity when adding new level (C++ style)
+        self.update_max_nom_size();
+    }
+
+    /// Update total nominal capacity across all levels (C++ style)
+    fn update_max_nom_size(&mut self) {
+        self.max_nom_size = self.compactors.iter()
+            .map(|c| c.nominal_capacity())
+            .sum();
+    }
+
+    /// Update total retained items across all levels (C++ style)
+    fn update_num_retained(&mut self) {
+        self.num_retained = self.compactors.iter()
+            .map(|c| c.num_items())
+            .sum();
     }
 
     // Debug method to inspect compactor state
@@ -664,6 +684,7 @@ where
         }
     }
 }
+
 
 impl<T> Default for ReqSketch<T>
 where
