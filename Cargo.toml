@@ -28,3 +28,7 @@ rand_distr = "0.4"
 [features]
 default = []
 serde = ["dep:serde"]
+
+[profile.release]
+debug = true
+opt-level = 3

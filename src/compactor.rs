@@ -40,6 +40,9 @@ pub struct Compactor<T> {
     items: Vec<T>,
     /// Whether items are currently sorted
     is_sorted: bool,
+    /// Reusable scratch buffer for compaction operations
+    #[cfg_attr(feature = "serde", serde(skip))]
+    scratch_buffer: Vec<T>,
 }
 
 impl<T> Compactor<T>
@@ -55,7 +58,10 @@ where
     pub fn new(lg_weight: u8, k: u16, rank_accuracy: RankAccuracy) -> Self {
         let section_size_raw = (k as f32) / (2.0_f32.powf(lg_weight as f32 / 2.0));
         let section_size = nearest_even(section_size_raw);
-        let num_sections = 3; // Initial number of sections
+        let num_sections = 3u8; // Initial number of sections
+
+        // Pre-reserve capacity to eliminate Vec reallocations
+        let nominal: usize = (2 * section_size * num_sections as u32) as usize;
 
         Self {
             lg_weight,
@@ -64,8 +70,9 @@ where
             section_size,
             num_sections,
             state: 0,
-            items: Vec::new(),
+            items: Vec::with_capacity(nominal),
             is_sorted: true, // Start sorted (empty)
+            scratch_buffer: Vec::with_capacity(nominal / 2 + 8), // typical promotion size
         }
     }
 
@@ -96,6 +103,7 @@ where
     }
 
     /// Appends an item to this compactor.
+    #[inline(always)]
     pub fn append(&mut self, item: T) {
         self.items.push(item);
         if self.items.len() > 1 {
@@ -113,6 +121,9 @@ where
     }
 
     /// Merges pre-sorted items into this compactor.
+    /// Merges sorted items into this compactor using scratch buffer to avoid allocation.
+    /// Both this compactor's items and the input must be sorted.
+    #[inline(always)]
     pub fn merge_sorted(&mut self, items: &[T]) {
         if items.is_empty() {
             return;
@@ -124,44 +135,47 @@ where
             return;
         }
 
-        // If we're sorted and the new items are sorted, we can merge efficiently
-        if self.is_sorted {
-            let mut merged = Vec::with_capacity(self.items.len() + items.len());
-            let mut i = 0;
-            let mut j = 0;
+        // Ensure sorted on both inputs by contract
+        let total = self.items.len() + items.len();
+        if self.scratch_buffer.capacity() < total {
+            self.scratch_buffer.reserve(total - self.scratch_buffer.capacity());
+        }
+        self.scratch_buffer.clear();
 
-            while i < self.items.len() && j < items.len() {
-                if self.items[i] <= items[j] {
-                    merged.push(self.items[i].clone());
-                    i += 1;
-                } else {
-                    merged.push(items[j].clone());
-                    j += 1;
-                }
-            }
+        let (mut i, mut j) = (0usize, 0usize);
+        let (a, b) = (&self.items, items);
 
-            while i < self.items.len() {
-                merged.push(self.items[i].clone());
+        // Two-pointer merge into scratch buffer
+        while i < a.len() && j < b.len() {
+            if a[i].partial_cmp(&b[j]).unwrap_or(std::cmp::Ordering::Equal).is_le() {
+                self.scratch_buffer.push(a[i].clone());
                 i += 1;
-            }
-
-            while j < items.len() {
-                merged.push(items[j].clone());
+            } else {
+                self.scratch_buffer.push(b[j].clone());
                 j += 1;
             }
-
-            self.items = merged;
-        } else {
-            // Just append and sort later
-            self.items.extend_from_slice(items);
-            self.is_sorted = false;
         }
+
+        // Add remaining elements
+        if i < a.len() {
+            self.scratch_buffer.extend_from_slice(&a[i..]);
+        }
+        if j < b.len() {
+            self.scratch_buffer.extend_from_slice(&b[j..]);
+        }
+
+        // Swap scratch buffer with items (zero-copy)
+        self.items.clear();
+        std::mem::swap(&mut self.items, &mut self.scratch_buffer);
+        self.is_sorted = true;
     }
 
     /// Sorts the items in this compactor if not already sorted.
+    #[inline(always)]
     pub fn sort(&mut self) {
         if !self.is_sorted {
-            self.items.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+            // Use unstable sort for better performance (stable not needed for REQ sketch)
+            self.items.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             self.is_sorted = true;
         }
     }
@@ -171,6 +185,7 @@ where
     /// This operation compacts a section of items (not the entire level) and promotes
     /// approximately half of the compacted items to the next level.
     /// The weight is conserved exactly: N compacted items -> N/2 promoted items with 2x weight
+    #[inline(always)]
     pub fn compact(&mut self, _rank_accuracy: RankAccuracy) -> Vec<T> {
         if self.items.is_empty() {
             return Vec::new();
@@ -192,7 +207,7 @@ where
         self.ensure_enough_sections();
 
         // Promote every other item from the compaction range
-        let promoted = self.promote_evens_or_odds(
+        let promoted = self.promote_evens_or_odds_simple(
             &self.items[compaction_range.0..compaction_range.1],
             _rank_accuracy
         );
@@ -253,6 +268,7 @@ where
         }
     }
 
+    #[inline(always)]
     fn compute_compaction_range(&self, secs_to_compact: u8) -> (usize, usize) {
         // Implement exact C++ logic from compute_compaction_range
         let nom_capacity = self.nominal_capacity() as usize;
@@ -289,9 +305,12 @@ where
         (low, high)
     }
 
-    fn promote_evens_or_odds(&self, items: &[T], _rank_accuracy: RankAccuracy) -> Vec<T> {
+    fn promote_evens_or_odds(&mut self, items: &[T], _rank_accuracy: RankAccuracy) -> &Vec<T> {
+        // Clear and reuse scratch buffer to avoid allocation
+        self.scratch_buffer.clear();
+
         if items.is_empty() {
-            return Vec::new();
+            return &self.scratch_buffer;
         }
 
         // Implement exact C++ coin flip logic
@@ -305,6 +324,34 @@ where
             // For even state, C++ uses random_bit()
             // Use deterministic but pseudo-random pattern for reproducibility
             // This creates a good distribution while remaining deterministic
+            ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
+        };
+
+        // Pre-allocate capacity to avoid reallocations
+        let estimated_size = (items.len() + 1) / 2;
+        if self.scratch_buffer.capacity() < estimated_size {
+            self.scratch_buffer.reserve(estimated_size - self.scratch_buffer.capacity());
+        }
+
+        let mut i = if odds { 1 } else { 0 };
+        while i < items.len() {
+            self.scratch_buffer.push(items[i].clone());
+            i += 2; // Skip every other item
+        }
+
+        &self.scratch_buffer
+    }
+
+    #[inline(always)]
+    fn promote_evens_or_odds_simple(&self, items: &[T], _rank_accuracy: RankAccuracy) -> Vec<T> {
+        if items.is_empty() {
+            return Vec::new();
+        }
+
+        // Implement exact C++ coin flip logic
+        let odds = if (self.state & 1) == 1 {
+            (self.state >> 1) & 1 == 0
+        } else {
             ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
         };
 
