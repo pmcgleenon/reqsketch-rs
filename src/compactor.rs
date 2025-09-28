@@ -191,12 +191,15 @@ where
             return Vec::new();
         }
 
-        // Ensure items are sorted
-        self.sort();
-
         // Calculate sections to compact based on state (C++ logic)
         let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
         let compaction_range = self.compute_compaction_range(secs_to_compact);
+
+        // Sort only the compaction range we are about to operate on (avoid sorting the whole level)
+        self.items[compaction_range.0..compaction_range.1]
+            .sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        // The rest of the level may not be sorted; that's fine.
+        self.is_sorted = false;
 
         // Must have at least 2 items to compact
         if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
