@@ -94,6 +94,7 @@ where
             max_item: None,
             compactors: Vec::new(),
             sorted_view_cache: None,
+            promotion_buf: Vec::new(),
         })
     }
 

@@ -180,49 +180,67 @@ where
         }
     }
 
-    /// Compacts this compactor and returns the promoted items.
-    ///
-    /// This operation compacts a section of items (not the entire level) and promotes
-    /// approximately half of the compacted items to the next level.
-    /// The weight is conserved exactly: N compacted items -> N/2 promoted items with 2x weight
+    /// Compacts into the provided output buffer without allocating.
+    /// Writes promoted items into `out` and removes the compacted range in-place via `copy_within + truncate`.
     #[inline(always)]
-    pub fn compact(&mut self, _rank_accuracy: RankAccuracy) -> Vec<T> {
+    pub fn compact_into(&mut self, _rank_accuracy: RankAccuracy, out: &mut Vec<T>) {
         if self.items.is_empty() {
-            return Vec::new();
+            out.clear();
+            return;
         }
 
         // Calculate sections to compact based on state (C++ logic)
         let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
         let compaction_range = self.compute_compaction_range(secs_to_compact);
 
-        // Sort only the compaction range we are about to operate on (avoid sorting the whole level)
+        // Sort only the compaction range (avoid sorting the whole level)
         self.items[compaction_range.0..compaction_range.1]
             .sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        // The rest of the level may not be sorted; that's fine.
-        self.is_sorted = false;
+        self.is_sorted = false; // level as a whole might no longer be fully sorted
 
         // Must have at least 2 items to compact
         if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
-            return Vec::new();
+            out.clear();
+            return;
         }
 
         // Ensure enough sections for growth
         self.ensure_enough_sections();
 
-        // Promote every other item from the compaction range
-        let promoted = self.promote_evens_or_odds_simple(
-            &self.items[compaction_range.0..compaction_range.1],
-            _rank_accuracy
-        );
+        // Even/odd choice (same logic you had)
+        let odds = if (self.state & 1) == 1 {
+            (self.state >> 1) & 1 == 0
+        } else {
+            ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
+        };
 
-        // Remove the entire compaction range (both promoted and non-promoted items)
-        // This is the key insight: we remove ALL items in the range, not just the non-promoted ones
-        self.items.drain(compaction_range.0..compaction_range.1);
+        // Write promoted items directly into `out` using raw-pointer reads to avoid borrow conflicts.
+        out.clear();
+        let (start, end) = compaction_range;
+        let base_ptr = self.items.as_ptr();
+        let mut i = start + if odds { 1 } else { 0 };
+        // SAFETY: we only read from `self.items[start..end]` and do not mutate `self.items` until after this loop.
+        while i < end {
+            unsafe {
+                let r = &*base_ptr.add(i);
+                out.push(r.clone());
+            }
+            i += 2;
+        }
+
+        // Remove the compacted range in-place (no allocation).
+        self.items.drain(start..end);
 
         // Update state
         self.state += 1;
+    }
 
-        promoted
+    /// Back-compat wrapper (allocates if used). Prefer `compact_into` for performance.
+    #[inline(always)]
+    pub fn compact(&mut self, _rank_accuracy: RankAccuracy) -> Vec<T> {
+        let mut out = Vec::new();
+        self.compact_into(_rank_accuracy, &mut out);
+        out
     }
 
     /// Returns an iterator over the items in this compactor.
