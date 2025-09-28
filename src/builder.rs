@@ -94,7 +94,7 @@ where
             max_item: None,
             compactors: Vec::new(),
             sorted_view_cache: None,
-            promotion_buf: Vec::new(),
+            promotion_buf: Vec::with_capacity(self.k as usize), // Pre-allocate based on k
         })
     }
 
