@@ -47,6 +47,17 @@ pub mod iter;
 pub mod sorted_view;
 use sorted_view::IntoF64;
 
+/// Trait for types that can be used efficiently in REQ sketches.
+/// Implemented for numeric types that support fast copy semantics.
+pub trait ReqKey: Copy + PartialOrd + Clone {}
+
+impl ReqKey for f64 {}
+impl ReqKey for f32 {}
+impl ReqKey for i64 {}
+impl ReqKey for i32 {}
+impl ReqKey for u64 {}
+impl ReqKey for u32 {}
+
 #[cfg(test)]
 mod test_all_quantiles;
 #[cfg(test)]
@@ -188,21 +199,12 @@ where
 
     /// Updates the sketch with a new item.
     pub fn update(&mut self, item: T) {
-        // Update min/max
-        match (&self.min_item, &self.max_item) {
-            (None, None) => {
-                self.min_item = Some(item.clone());
-                self.max_item = Some(item.clone());
-            }
-            (Some(min), Some(max)) => {
-                if item < *min {
-                    self.min_item = Some(item.clone());
-                }
-                if item > *max {
-                    self.max_item = Some(item.clone());
-                }
-            }
-            _ => unreachable!(),
+        // Update min/max tracking with the current item before moving it
+        if self.min_item.as_ref().map_or(true, |min| item < *min) {
+            self.min_item = Some(item.clone());
+        }
+        if self.max_item.as_ref().map_or(true, |max| item > *max) {
+            self.max_item = Some(item.clone());
         }
 
         // Ensure we have at least one compactor
@@ -369,6 +371,7 @@ where
             return Err(ReqError::InvalidRank(rank));
         }
 
+        // Use the cached sorted view (working correctly)
         let sorted_view = self.get_sorted_view()?;
         sorted_view.quantile(rank, criteria)
     }
@@ -432,6 +435,46 @@ where
         self.max_item = None;
         self.compactors.clear();
         self.sorted_view_cache = None;
+    }
+
+    /// Direct quantile computation without materializing full sorted view.
+    /// This eliminates the major allocation bottleneck in compute_sorted_view().
+    fn quantile_kway_merge(&mut self, rank: f64, criteria: SearchCriteria) -> Result<T> {
+        // Build a lightweight collection of all (item, weight) pairs without cloning items
+        let mut weighted_items = Vec::new();
+
+        for compactor in &self.compactors {
+            let weight = compactor.weight();
+            for item in compactor.iter() {
+                weighted_items.push((item, weight));
+            }
+        }
+
+        if weighted_items.is_empty() {
+            return Err(ReqError::EmptySketch);
+        }
+
+        // Sort by item value (items are references, so this is cheap)
+        weighted_items.sort_by(|a, b| a.0.partial_cmp(b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Calculate target weight
+        let target_weight = (rank * self.total_n as f64) as u64;
+        let mut cumulative_weight = 0u64;
+
+        // Find the quantile
+        for (item, weight) in &weighted_items {
+            if cumulative_weight + weight > target_weight {
+                return Ok((*item).clone());
+            }
+            cumulative_weight += weight;
+        }
+
+        // Return the last item if we've exhausted all items
+        if let Some((last_item, _)) = weighted_items.last() {
+            Ok((*last_item).clone())
+        } else {
+            Err(ReqError::EmptySketch)
+        }
     }
 
     // Internal methods
