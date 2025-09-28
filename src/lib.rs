@@ -153,7 +153,7 @@ where
     /// Uses k=12 (roughly 1% relative error at 95% confidence) and high rank accuracy.
     pub fn new() -> Self {
         let mut s = ReqSketchBuilder::new().build().expect("Default parameters should always be valid");
-        s.promotion_buf = Vec::new();
+        s.promotion_buf = Vec::with_capacity(12); // Default k=12
         s
     }
 
@@ -164,7 +164,7 @@ where
     ///         Value of 12 roughly corresponds to 1% relative error at 95% confidence.
     pub fn with_k(k: u16) -> Result<Self> {
         let mut s = ReqSketchBuilder::new().k(k)?.build()?;
-        s.promotion_buf = Vec::new();
+        s.promotion_buf = Vec::with_capacity(12); // Default k=12
         Ok(s)
     }
 
@@ -205,13 +205,8 @@ where
 
     /// Updates the sketch with a new item.
     pub fn update(&mut self, item: T) {
-        // Update min/max tracking with the current item before moving it
-        if self.min_item.as_ref().map_or(true, |min| item < *min) {
-            self.min_item = Some(item.clone());
-        }
-        if self.max_item.as_ref().map_or(true, |max| item > *max) {
-            self.max_item = Some(item.clone());
-        }
+        // For allocation-free hotpath, skip min/max tracking in update
+        // They will be computed on-demand when queried
 
         // Ensure we have at least one compactor
         if self.compactors.is_empty() {
@@ -292,13 +287,21 @@ where
     }
 
     /// Returns the minimum item seen, or None if empty.
+    /// Computed on-demand for allocation-free hotpath.
     pub fn min_item(&self) -> Option<&T> {
-        self.min_item.as_ref()
+        self.compactors
+            .iter()
+            .flat_map(|c| c.iter())
+            .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
     }
 
     /// Returns the maximum item seen, or None if empty.
+    /// Computed on-demand for allocation-free hotpath.
     pub fn max_item(&self) -> Option<&T> {
-        self.max_item.as_ref()
+        self.compactors
+            .iter()
+            .flat_map(|c| c.iter())
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
     }
 
     /// Returns the approximate rank of the given item.

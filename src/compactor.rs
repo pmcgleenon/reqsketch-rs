@@ -137,10 +137,10 @@ where
 
         // Ensure sorted on both inputs by contract
         let total = self.items.len() + items.len();
+        self.scratch_buffer.clear();
         if self.scratch_buffer.capacity() < total {
             self.scratch_buffer.reserve(total - self.scratch_buffer.capacity());
         }
-        self.scratch_buffer.clear();
 
         let (mut i, mut j) = (0usize, 0usize);
         let (a, b) = (&self.items, items);
@@ -228,8 +228,17 @@ where
             i += 2;
         }
 
-        // Remove the compacted range in-place (no allocation).
-        self.items.drain(start..end);
+        // Remove the compacted range in-place: shift tail left and truncate (no allocation).
+        let removed = end - start;
+        if end < self.items.len() {
+            // SAFETY: We're moving non-overlapping ranges and ensuring bounds are valid
+            unsafe {
+                let ptr = self.items.as_mut_ptr();
+                std::ptr::copy(ptr.add(end), ptr.add(start), self.items.len() - end);
+            }
+        }
+        let new_len = self.items.len() - removed;
+        self.items.truncate(new_len);
 
         // Update state
         self.state += 1;
