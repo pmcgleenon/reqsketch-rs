@@ -218,7 +218,7 @@ where
             return;
         }
 
-        // Ensure enough sections for growth
+        // Ensure enough sections for growth (C++: single call in compact)
         self.ensure_enough_sections();
 
         // C++ coin flip logic:
@@ -314,7 +314,7 @@ where
 
         // C++ logic: make compacted region even BEFORE bounds checking
         // if (((num_items_ - non_compact) & 1) == 1) ++non_compact;
-        if self.items.len() > non_compact && ((self.items.len() - non_compact) & 1) == 1 {
+        if ((self.items.len() - non_compact) & 1) == 1 {
             non_compact += 1;
         }
 
