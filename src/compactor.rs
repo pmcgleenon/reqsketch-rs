@@ -49,6 +49,8 @@ pub struct Compactor<T> {
     rank_accuracy: RankAccuracy,
     /// Raw section size (may be fractional)
     section_size_raw: f32,
+    /// Random bit for compaction (matches C++ coin_)
+    coin: bool,
 }
 
 impl<T> Compactor<T>
@@ -84,6 +86,7 @@ where
             // COLD FIELDS
             rank_accuracy,
             section_size_raw,
+            coin: rand::random::<bool>(), // C++: coin_(random_utils::random_bit())
         }
     }
 
@@ -218,12 +221,15 @@ where
         // Ensure enough sections for growth
         self.ensure_enough_sections();
 
-        // Even/odd choice (same logic you had)
-        let odds = if (self.state & 1) == 1 {
-            (self.state >> 1) & 1 == 0
+        // C++ coin flip logic:
+        // if ((state_ & 1) == 1) { coin_ = !coin_; } // for odd flip coin;
+        // else { coin_ = random_utils::random_bit(); } // random coin flip
+        if (self.state & 1) == 1 {
+            self.coin = !self.coin; // flip coin for odd states
         } else {
-            ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
-        };
+            self.coin = rand::random::<bool>(); // random coin flip for even states
+        }
+        let odds = self.coin;
 
         // Build promoted items directly into output buffer (no alloc)
         out.clear();

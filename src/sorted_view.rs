@@ -215,39 +215,52 @@ where
         }
 
         // Convert rank to target cumulative weight
-        // REQ sketch quantile calculation: match the reference implementation behavior
+        // Match C++ implementation exactly:
+        // uint64_t weight = static_cast<uint64_t>(inclusive ? std::ceil(rank * total_weight_) : rank * total_weight_);
         let target_weight = match criteria {
             SearchCriteria::Inclusive => {
-                // For inclusive quantiles, we want the item that contains the rank
-                // rank * (n-1) gives us the 0-based position, then +1 for 1-based cumulative weight
-                let target_pos = rank * (self.total_weight - 1) as f64;
-                target_pos.floor() as u64 + 1 // Use floor instead of round to get lower bound
+                // C++: std::ceil(rank * total_weight_)
+                (rank * self.total_weight as f64).ceil() as u64
             },
             SearchCriteria::Exclusive => {
-                // For exclusive quantiles, we want the item just above rank * n
-                let target_pos = rank * self.total_weight as f64;
-                target_pos.ceil() as u64
+                // C++: rank * total_weight_
+                (rank * self.total_weight as f64) as u64
             },
         };
 
-        // Find the first item whose cumulative weight >= target_weight
-        for i in 0..self.cumulative_weights.len() {
-            match criteria {
-                SearchCriteria::Inclusive => {
-                    if self.cumulative_weights[i] >= target_weight {
-                        return Ok(self.items[i].clone());
-                    }
+        // Find item using binary search to match C++ lower_bound/upper_bound behavior
+        // C++: auto it = inclusive ? std::lower_bound(...) : std::upper_bound(...);
+        let index = match criteria {
+            SearchCriteria::Inclusive => {
+                // C++: lower_bound finds first element not less than target_weight
+                // i.e., first element >= target_weight
+                self.cumulative_weights.binary_search(&target_weight)
+                    .unwrap_or_else(|pos| pos)
+            },
+            SearchCriteria::Exclusive => {
+                // C++: upper_bound finds first element greater than target_weight
+                // i.e., first element > target_weight
+                match self.cumulative_weights.binary_search(&target_weight) {
+                    Ok(pos) => {
+                        // Found exact match, find first element > target_weight
+                        let mut next_pos = pos + 1;
+                        while next_pos < self.cumulative_weights.len()
+                              && self.cumulative_weights[next_pos] == target_weight {
+                            next_pos += 1;
+                        }
+                        next_pos
+                    },
+                    Err(pos) => pos, // First element > target_weight
                 }
-                SearchCriteria::Exclusive => {
-                    if self.cumulative_weights[i] > target_weight {
-                        return Ok(self.items[i].clone());
-                    }
-                }
-            }
+            },
+        };
+
+        if index >= self.items.len() {
+            // C++: if (it == entries_.end()) return deref_helper(entries_[entries_.size() - 1].first);
+            return Ok(self.items[self.items.len() - 1].clone());
         }
 
-        // Fallback to last item
-        Ok(self.items[self.items.len() - 1].clone())
+        Ok(self.items[index].clone())
     }
 
     /// Returns the Probability Mass Function (PMF) for the given split points.
