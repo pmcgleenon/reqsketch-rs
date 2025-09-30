@@ -9,9 +9,10 @@ use std::cmp::Ordering;
 
 /// C++ compatible nearest_even function
 fn nearest_even(value: f32) -> u32 {
-    let result = ((value / 2.0).round() as u32) * 2;
-    // Ensure minimum value of 2 (since k must be at least 4, section sizes should be at least 2)
-    result.max(2)
+    // Exact C++ implementation: static_cast<uint32_t>(round(value / 2)) << 1;
+    // But enforce MIN_K=4 constraint like C++ to prevent infinite loops
+    const MIN_K: u32 = 4;
+    (((value / 2.0).round() as u32) << 1).max(MIN_K)
 }
 
 #[cfg(feature = "serde")]
@@ -305,13 +306,10 @@ where
         let nom_capacity = self.nominal_capacity() as usize;
         let mut non_compact = nom_capacity / 2 + (self.num_sections - secs_to_compact) as usize * self.section_size as usize;
 
-        // Ensure bounds first to prevent overflow
-        non_compact = non_compact.min(self.items.len());
-
-        // Make compacted region even - C++ logic (only if we have enough items)
+        // C++ logic: make compacted region even BEFORE bounds checking
+        // if (((num_items_ - non_compact) & 1) == 1) ++non_compact;
         if self.items.len() > non_compact && ((self.items.len() - non_compact) & 1) == 1 {
             non_compact += 1;
-            non_compact = non_compact.min(self.items.len()); // Ensure bounds again
         }
 
         // C++ logic: const uint32_t low = hra_ ? 0 : non_compact;
@@ -328,6 +326,7 @@ where
             }
             RankAccuracy::LowRank => {
                 // LRA: low = non_compact, high = num_items
+                // Apply bounds check only when assigning to low
                 let low = non_compact.min(self.items.len());
                 (low, self.items.len())
             }
@@ -592,13 +591,14 @@ mod tests {
 
     #[test]
     fn test_nearest_even() {
-        assert_eq!(nearest_even(1.0), 2); // minimum of 2
-        assert_eq!(nearest_even(2.0), 2);
-        assert_eq!(nearest_even(3.0), 4); // 3/2=1.5, round(1.5)=2, 2*2=4 (C++ behavior)
-        assert_eq!(nearest_even(4.0), 4);
-        assert_eq!(nearest_even(4.6), 4);
-        assert_eq!(nearest_even(5.6), 6);
-        assert_eq!(nearest_even(13.0), 14); // 13/2=6.5, round(6.5)=7, 7*2=14 (C++ behavior)
+        assert_eq!(nearest_even(0.0), 4); // 0/2=0, round(0)=0, 0<<1=0, but max(4)=4
+        assert_eq!(nearest_even(1.0), 4); // 1/2=0.5, round(0.5)=1, 1<<1=2, but max(4)=4
+        assert_eq!(nearest_even(2.0), 4); // 2/2=1, round(1)=1, 1<<1=2, but max(4)=4
+        assert_eq!(nearest_even(3.0), 4); // 3/2=1.5, round(1.5)=2, 2<<1=4, max(4)=4
+        assert_eq!(nearest_even(4.0), 4); // 4/2=2, round(2)=2, 2<<1=4
+        assert_eq!(nearest_even(4.6), 4); // 4.6/2=2.3, round(2.3)=2, 2<<1=4
+        assert_eq!(nearest_even(5.6), 6); // 5.6/2=2.8, round(2.8)=3, 3<<1=6
+        assert_eq!(nearest_even(13.0), 14); // 13/2=6.5, round(6.5)=7, 7<<1=14
     }
 
     #[test]
