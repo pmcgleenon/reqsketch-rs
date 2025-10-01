@@ -10,7 +10,7 @@ fn test_2_sigma_bounds_compliance() {
     let mut sketch = ReqSketch::builder()
         .rank_accuracy(RankAccuracy::HighRank)
         .build()
-        .unwrap();
+        .expect("Operation should succeed");
 
     let n = 50_000;
     for i in 0..n {
@@ -23,7 +23,7 @@ fn test_2_sigma_bounds_compliance() {
 
     for &rank in &test_ranks {
         let true_quantile = rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
         let lower_bound = sketch.get_rank_lower_bound(rank, 2);
         let upper_bound = sketch.get_rank_upper_bound(rank, 2);
@@ -60,7 +60,7 @@ fn test_3_sigma_bounds_compliance() {
     let mut sketch = ReqSketch::builder()
         .rank_accuracy(RankAccuracy::HighRank)
         .build()
-        .unwrap();
+        .expect("Operation should succeed");
 
     let n = 50_000;
     for i in 0..n {
@@ -74,7 +74,7 @@ fn test_3_sigma_bounds_compliance() {
 
     for &rank in &test_ranks {
         let true_quantile = rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
         let lower_bound = sketch.get_rank_lower_bound(rank, 3);
         let upper_bound = sketch.get_rank_upper_bound(rank, 3);
@@ -113,7 +113,7 @@ fn test_critical_quantiles_2_sigma() {
     let mut sketch = ReqSketch::builder()
         .rank_accuracy(RankAccuracy::HighRank)
         .build()
-        .unwrap();
+        .expect("Operation should succeed");
 
     let n = 50_000;
     for i in 0..n {
@@ -125,7 +125,7 @@ fn test_critical_quantiles_2_sigma() {
 
     for &rank in &critical_ranks {
         let true_quantile = rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
         let lower_bound = sketch.get_rank_lower_bound(rank, 2);
         let upper_bound = sketch.get_rank_upper_bound(rank, 2);
@@ -151,7 +151,7 @@ fn test_low_quantiles_high_accuracy() {
     let mut sketch = ReqSketch::builder()
         .rank_accuracy(RankAccuracy::HighRank)  // HRA should excel at low quantiles
         .build()
-        .unwrap();
+        .expect("Operation should succeed");
 
     let n = 50_000;
     for i in 0..n {
@@ -163,7 +163,7 @@ fn test_low_quantiles_high_accuracy() {
 
     for &rank in &low_ranks {
         let true_quantile = rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
         // Test both 2-sigma and 3-sigma for low quantiles
         let within_2sigma = {
@@ -197,7 +197,7 @@ fn test_extreme_quantiles_bounds() {
     let mut sketch = ReqSketch::builder()
         .rank_accuracy(RankAccuracy::HighRank)
         .build()
-        .unwrap();
+        .expect("Operation should succeed");
 
     let n = 50_000;
     for i in 0..n {

@@ -112,7 +112,7 @@ mod error_bounds_validation_tests {
         let k_values = [8, 12, 16, 24, 32];
 
         for &k in &k_values {
-            let mut sketch = ReqSketch::builder().k(k).unwrap().build().unwrap();
+            let mut sketch = ReqSketch::builder().k(k).expect("Operation should succeed").build().expect("Operation should succeed");
 
             // Add enough data to trigger estimation mode
             for i in 0..10000 {
@@ -147,10 +147,10 @@ mod error_bounds_validation_tests {
         for &rank in &test_ranks {
             let mut hra_sketch = ReqSketch::builder()
                 .rank_accuracy(RankAccuracy::HighRank)
-                .build().unwrap();
+                .build().expect("Operation should succeed");
             let mut lra_sketch = ReqSketch::builder()
                 .rank_accuracy(RankAccuracy::LowRank)
-                .build().unwrap();
+                .build().expect("Operation should succeed");
 
             // Add identical data to both
             for i in 0..10000 {
@@ -249,7 +249,7 @@ mod internal_state_consistency_tests {
         }
 
         // Get sorted view and verify ordering
-        let sorted_view = sketch.test_get_sorted_view().unwrap();
+        let sorted_view = sketch.test_get_sorted_view().expect("Operation should succeed");
         let mut prev_value = None;
 
         for item in sorted_view.iter() {
@@ -275,7 +275,7 @@ mod internal_state_consistency_tests {
         let total_items_before = sketch1.len() + sketch2.len();
 
         // Merge sketches
-        sketch1.merge(&sketch2).unwrap();
+        sketch1.merge(&sketch2).expect("Operation should succeed");
 
         // Verify total weight conservation
         assert_eq!(sketch1.len(), total_items_before as u64,
@@ -326,8 +326,8 @@ mod cross_validation_tests {
         let test_ranks = [0.1, 0.25, 0.5, 0.75, 0.9];
 
         for &rank in &test_ranks {
-            let quantile = sketch.quantile(rank, SearchCriteria::Inclusive).unwrap();
-            let round_trip_rank = sketch.rank(&quantile, SearchCriteria::Inclusive).unwrap();
+            let quantile = sketch.quantile(rank, SearchCriteria::Inclusive).expect("Operation should succeed");
+            let round_trip_rank = sketch.rank(&quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
             let error = (round_trip_rank - rank).abs();
 
@@ -359,7 +359,7 @@ mod cross_validation_tests {
 
         for &rank in &test_ranks {
             let true_quantile = rank * (n - 1) as f64;
-            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
             // Use simple tolerance check like C++ and Java tests (they use .01 margin)
             let error = (estimated_rank - rank).abs();

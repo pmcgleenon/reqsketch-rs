@@ -32,7 +32,7 @@ mod tests {
 
         // Test specific rank calculation that's failing
         let test_quantile = 4999.9;  // True quantile for rank 0.1
-        let estimated_rank = sketch.rank(&test_quantile, SearchCriteria::Inclusive).unwrap();
+        let estimated_rank = sketch.rank(&test_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
         println!("\n=== Specific Test Case ===");
         println!("Query quantile: {}", test_quantile);
@@ -41,7 +41,7 @@ mod tests {
         println!("Error: {}", (estimated_rank - 0.1).abs());
 
         // Also test the quantile going the other way
-        let estimated_quantile = sketch.quantile(0.1, SearchCriteria::Inclusive).unwrap();
+        let estimated_quantile = sketch.quantile(0.1, SearchCriteria::Inclusive).expect("Operation should succeed");
         println!("\nReverse test:");
         println!("Query rank: 0.1");
         println!("Estimated quantile: {}", estimated_quantile);

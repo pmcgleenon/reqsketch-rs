@@ -1,6 +1,6 @@
 //! Sorted view implementation for efficient quantile queries.
 
-use crate::{ReqError, Result, SearchCriteria};
+use crate::{ReqError, Result, SearchCriteria, TotalOrd};
 use std::cmp::Ordering;
 
 #[cfg(feature = "serde")]
@@ -65,7 +65,7 @@ impl IntoF64 for u64 {
 
 impl<T> SortedView<T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     /// Creates a new sorted view from weighted items.
     ///
@@ -83,7 +83,7 @@ where
         }
 
         // Sort by item value - use unstable sort for better performance
-        weighted_items.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
+        weighted_items.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
 
         let mut items = Vec::with_capacity(weighted_items.len());
         let mut cumulative_weights = Vec::with_capacity(weighted_items.len());
@@ -137,7 +137,7 @@ where
                 let mut after_idx = None;
 
                 for i in 0..self.items.len() {
-                    if self.items[i] <= *item {
+                    if self.items[i].total_cmp(item).is_le() {
                         before_idx = Some(i);
                     } else {
                         after_idx = Some(i);
@@ -174,7 +174,7 @@ where
                 // Find the last occurrence of items < target (strictly less than)
                 let mut cumulative_weight = 0u64;
                 for i in 0..self.items.len() {
-                    if self.items[i] < *item {
+                    if self.items[i].total_cmp(item).is_lt() {
                         cumulative_weight = self.cumulative_weights[i];
                     } else {
                         break;
@@ -326,7 +326,7 @@ where
     fn validate_split_points(&self, split_points: &[T]) -> Result<()> {
         // Check that split points are monotonically increasing
         for i in 1..split_points.len() {
-            if split_points[i - 1] >= split_points[i] {
+            if split_points[i - 1].total_cmp(&split_points[i]).is_ge() {
                 return Err(ReqError::InvalidSplitPoints(
                     "Split points must be unique and monotonically increasing".to_string(),
                 ));
@@ -347,7 +347,7 @@ impl SortedView<f64> {
 // Specialized implementation for numeric types that support interpolation
 impl<T> SortedView<T>
 where
-    T: PartialOrd + Clone + IntoF64 + Copy,
+    T: Clone + IntoF64 + Copy + TotalOrd + PartialEq,
 {
     /// Returns the approximate rank of the given item with interpolation support.
     pub fn rank_with_interpolation(&self, item: &T, criteria: SearchCriteria) -> Result<f64> {
@@ -361,7 +361,7 @@ where
                 let mut after_idx = None;
 
                 for i in 0..self.items.len() {
-                    if self.items[i] <= *item {
+                    if self.items[i].total_cmp(item).is_le() {
                         before_idx = Some(i);
                     } else {
                         after_idx = Some(i);
@@ -439,16 +439,16 @@ mod tests {
         let view = create_test_view();
 
         // Test exact matches
-        assert!((view.rank_no_interpolation(&1, SearchCriteria::Inclusive).unwrap() - 0.2).abs() < 1e-10);
-        assert!((view.rank_no_interpolation(&1, SearchCriteria::Exclusive).unwrap() - 0.0).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&1, SearchCriteria::Inclusive).expect("Rank should succeed") - 0.2).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&1, SearchCriteria::Exclusive).expect("Rank should succeed") - 0.0).abs() < 1e-10);
 
         // Test values between items
-        assert!((view.rank_no_interpolation(&2, SearchCriteria::Inclusive).unwrap() - 0.2).abs() < 1e-10);
-        assert!((view.rank_no_interpolation(&6, SearchCriteria::Inclusive).unwrap() - 0.6).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&2, SearchCriteria::Inclusive).expect("Rank should succeed") - 0.2).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&6, SearchCriteria::Inclusive).expect("Rank should succeed") - 0.6).abs() < 1e-10);
 
         // Test edge cases
-        assert!((view.rank_no_interpolation(&0, SearchCriteria::Inclusive).unwrap() - 0.0).abs() < 1e-10);
-        assert!((view.rank_no_interpolation(&10, SearchCriteria::Inclusive).unwrap() - 1.0).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&0, SearchCriteria::Inclusive).expect("Rank should succeed") - 0.0).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&10, SearchCriteria::Inclusive).expect("Rank should succeed") - 1.0).abs() < 1e-10);
     }
 
     #[test]
@@ -456,16 +456,16 @@ mod tests {
         let view = create_test_view();
 
         // Test edge cases
-        assert_eq!(view.quantile(0.0, SearchCriteria::Inclusive).unwrap(), 1);
-        assert_eq!(view.quantile(1.0, SearchCriteria::Inclusive).unwrap(), 9);
+        assert_eq!(view.quantile(0.0, SearchCriteria::Inclusive).expect("Quantile should succeed"), 1);
+        assert_eq!(view.quantile(1.0, SearchCriteria::Inclusive).expect("Quantile should succeed"), 9);
 
         // Test middle values
-        let median = view.quantile(0.5, SearchCriteria::Inclusive).unwrap();
+        let median = view.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
         assert!(median >= 3 && median <= 7); // Should be around the middle (values are 1,3,5,7,9)
 
         // Test various ranks
-        let q25 = view.quantile(0.25, SearchCriteria::Inclusive).unwrap();
-        let q75 = view.quantile(0.75, SearchCriteria::Inclusive).unwrap();
+        let q25 = view.quantile(0.25, SearchCriteria::Inclusive).expect("Quantile should succeed");
+        let q75 = view.quantile(0.75, SearchCriteria::Inclusive).expect("Quantile should succeed");
         assert!(q25 <= median);
         assert!(median <= q75);
     }
@@ -475,7 +475,7 @@ mod tests {
         let view = create_test_view();
         let split_points = vec![3, 7];
 
-        let pmf = view.pmf(&split_points, SearchCriteria::Inclusive).unwrap();
+        let pmf = view.pmf(&split_points, SearchCriteria::Inclusive).expect("PMF should succeed");
         assert_eq!(pmf.len(), 3); // 2 split points create 3 intervals
 
         // Sum should be approximately 1.0
@@ -488,7 +488,7 @@ mod tests {
         let view = create_test_view();
         let split_points = vec![3, 7];
 
-        let cdf = view.cdf(&split_points, SearchCriteria::Inclusive).unwrap();
+        let cdf = view.cdf(&split_points, SearchCriteria::Inclusive).expect("CDF should succeed");
         assert_eq!(cdf.len(), 3);
 
         // CDF should be monotonically increasing

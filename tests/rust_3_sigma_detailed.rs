@@ -8,10 +8,10 @@ fn test_rust_3_sigma_detailed_analysis() {
     println!("=== Rust Detailed 3-Sigma Compliance Analysis ===");
 
     let mut sketch = ReqSketch::builder()
-        .k(12).unwrap()
+        .k(12).expect("Operation should succeed")
         .rank_accuracy(RankAccuracy::HighRank)
         .build()
-        .unwrap();
+        .expect("Operation should succeed");
 
     let n = 50_000;
     for i in 0..n {
@@ -35,7 +35,7 @@ fn test_rust_3_sigma_detailed_analysis() {
 
     for &rank in &test_ranks {
         let true_quantile = rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
         let lower_bound = sketch.get_rank_lower_bound(rank, 3);
         let upper_bound = sketch.get_rank_upper_bound(rank, 3);
@@ -64,7 +64,7 @@ fn test_rust_3_sigma_detailed_analysis() {
     let mut passed_2sigma = 0;
     for &rank in &test_ranks {
         let true_quantile = rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
         let lower_bound = sketch.get_rank_lower_bound(rank, 2);
         let upper_bound = sketch.get_rank_upper_bound(rank, 2);
@@ -90,7 +90,7 @@ fn test_rust_3_sigma_detailed_analysis() {
     for &rank in &focus_ranks {
         println!("\nRank {} detailed analysis:", rank);
         let true_quantile = rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
         println!("  True quantile: {:.6}", true_quantile);
         println!("  Estimated rank: {:.6}", estimated_rank);

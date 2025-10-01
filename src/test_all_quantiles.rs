@@ -18,7 +18,7 @@ mod tests {
         let problem_ranks = [0.1, 0.25, 0.75];
 
         for &rank in &problem_ranks {
-            let estimated = sketch.quantile(rank, SearchCriteria::Inclusive).unwrap();
+            let estimated = sketch.quantile(rank, SearchCriteria::Inclusive).expect("Operation should succeed");
             let true_val = rank * (n - 1) as f64;
             let error = (estimated - true_val).abs() / true_val * 100.0;
 
@@ -45,8 +45,8 @@ mod tests {
         // Test if the issue is with SearchCriteria
         println!("\n=== SEARCH CRITERIA COMPARISON ===");
         let test_rank = 0.25;
-        let inclusive = sketch.quantile(test_rank, SearchCriteria::Inclusive).unwrap();
-        let exclusive = sketch.quantile(test_rank, SearchCriteria::Exclusive).unwrap();
+        let inclusive = sketch.quantile(test_rank, SearchCriteria::Inclusive).expect("Operation should succeed");
+        let exclusive = sketch.quantile(test_rank, SearchCriteria::Exclusive).expect("Operation should succeed");
 
         println!("Rank 0.25:");
         println!("  Inclusive: {}", inclusive);
@@ -72,9 +72,9 @@ mod tests {
         println!("Retained items: {}", retained);
 
         // Test the same quantiles as C++
-        let q01 = sketch.quantile(0.1, SearchCriteria::Inclusive).unwrap();
-        let q25 = sketch.quantile(0.25, SearchCriteria::Inclusive).unwrap();
-        let q50 = sketch.quantile(0.5, SearchCriteria::Inclusive).unwrap();
+        let q01 = sketch.quantile(0.1, SearchCriteria::Inclusive).expect("Operation should succeed");
+        let q25 = sketch.quantile(0.25, SearchCriteria::Inclusive).expect("Operation should succeed");
+        let q50 = sketch.quantile(0.5, SearchCriteria::Inclusive).expect("Operation should succeed");
 
         println!("\nQuantiles:");
         println!("0.1: {} (true: {})", q01, 0.1 * 999.0);
@@ -114,7 +114,7 @@ mod tests {
         println!("----\t---------\t----\t\t---------\t-------------");
 
         for &rank in &test_ranks {
-            let estimated_quantile = sketch.quantile(rank, SearchCriteria::Inclusive).unwrap();
+            let estimated_quantile = sketch.quantile(rank, SearchCriteria::Inclusive).expect("Operation should succeed");
             let true_quantile = rank * (n - 1) as f64;
             let relative_error = (estimated_quantile - true_quantile).abs() / true_quantile;
 

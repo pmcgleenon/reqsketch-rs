@@ -1,6 +1,6 @@
 //! Builder pattern implementation for REQ sketch construction.
 
-use crate::{RankAccuracy, RankMethod, ReqError, ReqSketch, Result};
+use crate::{RankAccuracy, RankMethod, ReqError, ReqSketch, Result, TotalOrd};
 use std::marker::PhantomData;
 
 /// Builder for constructing REQ sketches with custom parameters.
@@ -13,15 +13,17 @@ use std::marker::PhantomData;
 /// ```rust
 /// use reqsketch::{ReqSketch, RankAccuracy};
 ///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // Use defaults
-/// let sketch: ReqSketch<f64> = ReqSketch::builder().build().unwrap();
+/// let sketch: ReqSketch<f64> = ReqSketch::builder().build()?;
 ///
 /// // Custom configuration
 /// let sketch: ReqSketch<f64> = ReqSketch::builder()
-///     .k(16).unwrap()
+///     .k(16)?
 ///     .rank_accuracy(RankAccuracy::LowRank)
-///     .build()
-///     .unwrap();
+///     .build()?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct ReqSketchBuilder<T> {
@@ -33,7 +35,7 @@ pub struct ReqSketchBuilder<T> {
 
 impl<T> ReqSketchBuilder<T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     /// Creates a new builder with default parameters.
     ///
@@ -118,7 +120,7 @@ where
 
 impl<T> Default for ReqSketchBuilder<T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     fn default() -> Self {
         Self::new()
@@ -164,10 +166,10 @@ mod tests {
     fn test_builder_fluent_interface() {
         let sketch = ReqSketchBuilder::<i32>::new()
             .k(16)
-            .unwrap()
+            .expect("Valid k value")
             .rank_accuracy(RankAccuracy::LowRank)
             .build()
-            .unwrap();
+            .expect("Builder should succeed");
 
         assert_eq!(sketch.k(), 16);
         assert_eq!(sketch.rank_accuracy(), RankAccuracy::LowRank);

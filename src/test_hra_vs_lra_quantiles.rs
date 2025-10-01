@@ -13,11 +13,11 @@ mod tests {
         // Test both modes
         let mut hra_sketch = ReqSketch::builder()
             .rank_accuracy(RankAccuracy::HighRank)
-            .build().unwrap();
+            .build().expect("Operation should succeed");
 
         let mut lra_sketch = ReqSketch::builder()
             .rank_accuracy(RankAccuracy::LowRank)
-            .build().unwrap();
+            .build().expect("Operation should succeed");
 
         // Add same data to both
         for i in 0..n {
@@ -34,8 +34,8 @@ mod tests {
         println!("LRA retained items: {}", lra_retained);
 
         // Check first few items in sorted views
-        let hra_sorted = hra_sketch.test_get_sorted_view().unwrap();
-        let lra_sorted = lra_sketch.test_get_sorted_view().unwrap();
+        let hra_sorted = hra_sketch.test_get_sorted_view().expect("Operation should succeed");
+        let lra_sorted = lra_sketch.test_get_sorted_view().expect("Operation should succeed");
 
         println!("\nFirst 5 items:");
         println!("HRA: {:?}", hra_sorted.iter().take(5).collect::<Vec<_>>());
@@ -48,8 +48,8 @@ mod tests {
         for &rank in &test_ranks {
             let true_quantile = rank * (n - 1) as f64;
 
-            let hra_rank = hra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
-            let lra_rank = lra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+            let hra_rank = hra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
+            let lra_rank = lra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
             let hra_error = (hra_rank - rank).abs() / rank * 100.0;
             let lra_error = (lra_rank - rank).abs() / rank * 100.0;
@@ -74,8 +74,8 @@ mod tests {
         for &rank in &high_test_ranks {
             let true_quantile = rank * (n - 1) as f64;
 
-            let hra_rank = hra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
-            let lra_rank = lra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+            let hra_rank = hra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
+            let lra_rank = lra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
             let hra_error = (hra_rank - rank).abs() / rank * 100.0;
             let lra_error = (lra_rank - rank).abs() / rank * 100.0;
@@ -99,7 +99,7 @@ mod tests {
         // C++ defaults to HRA, so let's compare our HRA with C++ results
         let mut sketch = ReqSketch::builder()
             .rank_accuracy(RankAccuracy::HighRank)  // Same as C++ default
-            .build().unwrap();
+            .build().expect("Operation should succeed");
 
         let n = 50_000;
         for i in 0..n {
@@ -112,7 +112,7 @@ mod tests {
         // Test the 0.01 case that C++ handles well
         let target_rank = 0.01;
         let true_quantile = target_rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
         let error = (estimated_rank - target_rank).abs() / target_rank * 100.0;
 
         println!("0.01 quantile test:");
