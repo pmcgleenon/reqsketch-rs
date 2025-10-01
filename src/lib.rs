@@ -91,9 +91,9 @@ pub enum RankAccuracy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum RankMethod {
-    /// Use step function (C++ compatible, current default)
+    /// current default
     StepFunction,
-    /// Use linear interpolation (enhanced precision beyond C++)
+    /// Use linear interpolation enhanced precision 
     Interpolation,
 }
 
@@ -105,7 +105,7 @@ impl Default for RankAccuracy {
 
 impl Default for RankMethod {
     fn default() -> Self {
-        RankMethod::StepFunction // C++ compatible by default
+        RankMethod::StepFunction 
     }
 }
 
@@ -136,9 +136,7 @@ pub struct ReqSketch<T> {
     rank_accuracy: RankAccuracy,
     rank_method: RankMethod,
     total_n: u64,
-    /// Total nominal capacity across all levels (C++ style)
     max_nom_size: u32,
-    /// Total retained items across all levels (C++ style)
     num_retained: u32,
     compactors: Vec<compactor::Compactor<T>>,
     /// Reusable buffer for promotions to avoid per-compaction allocation.
@@ -216,10 +214,8 @@ where
         // Add to level 0 compactor
         self.compactors[0].append(item);
         self.total_n += 1;
-        // C++ style: increment num_retained and check global capacity
         self.num_retained += 1;
 
-        // Compress if needed (C++ style: when num_retained == max_nom_size)
         if self.num_retained == self.max_nom_size {
             self.compress();
         }
@@ -323,7 +319,6 @@ where
 
         match self.rank_method {
             RankMethod::StepFunction => {
-                // C++ compatible: use step function
                 let sorted_view = self.get_sorted_view()?;
                 sorted_view.rank_no_interpolation(item, criteria)
             }
@@ -341,7 +336,6 @@ where
     }
 
     /// Returns the approximate rank using direct compactor weight computation.
-    /// This matches the C++ get_rank implementation exactly.
     ///
     /// # Arguments
     /// * `item` - The item to find the rank for
@@ -357,7 +351,6 @@ where
         let inclusive = matches!(criteria, SearchCriteria::Inclusive);
         let mut total_weight = 0u64;
 
-        // Sum weights from all compactors (matches C++ approach)
         for compactor in &mut self.compactors {
             total_weight += compactor.compute_weight(item, inclusive);
         }
@@ -517,12 +510,10 @@ where
     }
 
     fn needs_compression(&self) -> bool {
-        // C++ style: Only compact when total retained == total nominal capacity
         self.num_retained >= self.max_nom_size
     }
 
     fn compress(&mut self) {
-        // C++ style: compact levels that are >= their nominal capacity
         while let Some(level) = (0..self.compactors.len())
             .find(|&i| self.compactors[i].num_items() >= self.compactors[i].nominal_capacity())
         {
@@ -540,7 +531,7 @@ where
             }
         }
 
-        // Update global counters after compaction (C++ style)
+        // Update global counters after compaction
         self.update_max_nom_size();
         self.update_num_retained();
 
@@ -552,18 +543,17 @@ where
         let level = self.compactors.len() as u8;
         let compactor = compactor::Compactor::new(level, self.k, self.rank_accuracy);
         self.compactors.push(compactor);
-        // Update global capacity when adding new level (C++ style)
         self.update_max_nom_size();
     }
 
-    /// Update total nominal capacity across all levels (C++ style)
+    /// Update total nominal capacity across all levels
     fn update_max_nom_size(&mut self) {
         self.max_nom_size = self.compactors.iter()
             .map(|c| c.nominal_capacity())
             .sum();
     }
 
-    /// Update total retained items across all levels (C++ style)
+    /// Update total retained items across all levels 
     fn update_num_retained(&mut self) {
         self.num_retained = self.compactors.iter()
             .map(|c| c.num_items())
@@ -636,7 +626,6 @@ where
         self.compute_rank_upper_bound(self.k, self.compactors.len() as u8, rank, num_std_dev, self.total_n, matches!(self.rank_accuracy, RankAccuracy::HighRank))
     }
 
-    /// Constants for error calculation matching C++ implementation
     const FIXED_RSE_FACTOR: f64 = 0.084;
     const INIT_NUM_SECTIONS: u8 = 3;
 
@@ -731,7 +720,6 @@ impl ReqSketch<f64> {
 
         match self.rank_method {
             RankMethod::StepFunction => {
-                // C++ compatible: use step function
                 let sorted_view = self.get_sorted_view()?;
                 sorted_view.rank_no_interpolation(item, criteria)
             }
@@ -974,7 +962,6 @@ mod tests {
 
     #[test]
     fn test_capacity_debug() {
-        // Compare our capacity calculations with what C++ should produce
         let mut sketch = ReqSketch::new(); // k=12 by default
 
         println!("=== CAPACITY DEBUG (k=12) ===");
@@ -1127,7 +1114,6 @@ mod tests {
         println!("Expected: {}", expected_001);
         println!("Relative error: {:.2}%", error_001 * 100.0);
 
-        // Test median for comparison with C++
         let median = sketch.quantile(0.5, SearchCriteria::Inclusive).unwrap();
         let expected_median = 24999.5;
         let median_error = (median - expected_median).abs() / expected_median;
