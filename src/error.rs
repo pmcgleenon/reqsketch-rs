@@ -11,7 +11,7 @@ pub enum ReqError {
     /// The sketch is empty and cannot perform the requested operation.
     EmptySketch,
 
-    /// Invalid parameter k - must be even and in range [4, 1024].
+    /// Invalid parameter k - must be even and >= 4.
     InvalidK(u16),
 
     /// Invalid rank - must be in range [0.0, 1.0].
@@ -38,7 +38,7 @@ impl fmt::Display for ReqError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ReqError::EmptySketch => write!(f, "Cannot perform operation on empty sketch"),
-            ReqError::InvalidK(k) => write!(f, "Invalid k parameter: {}. Must be even and in range [4, 1024]", k),
+            ReqError::InvalidK(k) => write!(f, "Invalid k parameter: {}. Must be even and >= 4", k),
             ReqError::InvalidRank(rank) => write!(f, "Invalid rank: {}. Must be in range [0.0, 1.0]", rank),
             ReqError::IncompatibleSketches(msg) => write!(f, "Incompatible sketches: {}", msg),
             ReqError::CacheInvalid => write!(f, "Internal cache is invalid"),
