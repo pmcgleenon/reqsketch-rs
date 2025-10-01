@@ -53,10 +53,10 @@ where
     /// Sets the k parameter.
     ///
     /// # Arguments
-    /// * `k` - Controls size and error of the sketch. Must be even and in range [4, 1024].
+    /// * `k` - Controls size and error of the sketch. Must be even and >= 4.
     ///
     /// # Errors
-    /// Returns `ReqError::InvalidK` if k is not even or outside valid range.
+    /// Returns `ReqError::InvalidK` if k is not even or < 4.
     pub fn k(mut self, k: u16) -> Result<Self> {
         validate_k(k)?;
         self.k = k;
@@ -127,7 +127,7 @@ where
 
 /// Validates the k parameter.
 pub(crate) fn validate_k(k: u16) -> Result<()> {
-    if k < 4 || k > 1024 || k % 2 != 0 {
+    if k < 4 || k % 2 != 0 {
         Err(ReqError::InvalidK(k))
     } else {
         Ok(())
@@ -151,11 +151,13 @@ mod tests {
         assert!(ReqSketchBuilder::<f64>::new().k(4).is_ok());
         assert!(ReqSketchBuilder::<f64>::new().k(12).is_ok());
         assert!(ReqSketchBuilder::<f64>::new().k(1024).is_ok());
+        assert!(ReqSketchBuilder::<f64>::new().k(2048).is_ok()); // large values now allowed
+        assert!(ReqSketchBuilder::<f64>::new().k(u16::MAX - 1).is_ok()); // max even u16
 
         // Invalid k values
         assert!(ReqSketchBuilder::<f64>::new().k(3).is_err()); // too small
         assert!(ReqSketchBuilder::<f64>::new().k(5).is_err()); // odd
-        assert!(ReqSketchBuilder::<f64>::new().k(1025).is_err()); // too large
+        assert!(ReqSketchBuilder::<f64>::new().k(u16::MAX).is_err()); // max u16 is odd
     }
 
     #[test]
@@ -176,9 +178,11 @@ mod tests {
         assert!(validate_k(4).is_ok());
         assert!(validate_k(12).is_ok());
         assert!(validate_k(1024).is_ok());
+        assert!(validate_k(2048).is_ok()); // large values now allowed
+        assert!(validate_k(u16::MAX - 1).is_ok()); // max even u16
 
         assert!(validate_k(3).is_err());
         assert!(validate_k(5).is_err());
-        assert!(validate_k(1025).is_err());
+        assert!(validate_k(u16::MAX).is_err()); // max u16 is odd
     }
 }
