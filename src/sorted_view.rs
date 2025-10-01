@@ -132,7 +132,7 @@ where
 
         match criteria {
             SearchCriteria::Inclusive => {
-                // Find where this item would fit and use interpolation like C++
+                // Find where this item would fit and use interpolation 
                 let mut before_idx = None;
                 let mut after_idx = None;
 
@@ -159,7 +159,7 @@ where
                         Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
                     }
                     (Some(before), Some(after)) => {
-                        // Interpolate between before and after items (like C++)
+                        // Interpolate between before and after items 
                         let before_item = &self.items[before];
                         let after_item = &self.items[after];
                         let before_weight = self.cumulative_weights[before];
@@ -215,31 +215,23 @@ where
         }
 
         // Convert rank to target cumulative weight
-        // Match C++ implementation exactly:
         // uint64_t weight = static_cast<uint64_t>(inclusive ? std::ceil(rank * total_weight_) : rank * total_weight_);
         let target_weight = match criteria {
             SearchCriteria::Inclusive => {
-                // C++: std::ceil(rank * total_weight_)
                 (rank * self.total_weight as f64).ceil() as u64
             },
             SearchCriteria::Exclusive => {
-                // C++: rank * total_weight_
                 (rank * self.total_weight as f64) as u64
             },
         };
 
-        // Find item using binary search to match C++ lower_bound/upper_bound behavior
-        // C++: auto it = inclusive ? std::lower_bound(...) : std::upper_bound(...);
+        // Find item using binary search 
         let index = match criteria {
             SearchCriteria::Inclusive => {
-                // C++: lower_bound finds first element not less than target_weight
-                // i.e., first element >= target_weight
                 self.cumulative_weights.binary_search(&target_weight)
                     .unwrap_or_else(|pos| pos)
             },
             SearchCriteria::Exclusive => {
-                // C++: upper_bound finds first element greater than target_weight
-                // i.e., first element > target_weight
                 match self.cumulative_weights.binary_search(&target_weight) {
                     Ok(pos) => {
                         // Found exact match, find first element > target_weight
@@ -256,7 +248,6 @@ where
         };
 
         if index >= self.items.len() {
-            // C++: if (it == entries_.end()) return deref_helper(entries_[entries_.size() - 1].first);
             return Ok(self.items[self.items.len() - 1].clone());
         }
 
@@ -366,7 +357,6 @@ where
 
         match criteria {
             SearchCriteria::Inclusive => {
-                // Find where this item would fit and use interpolation like C++
                 let mut before_idx = None;
                 let mut after_idx = None;
 
@@ -393,7 +383,7 @@ where
                         Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
                     }
                     (Some(before), Some(after)) => {
-                        // Interpolate between before and after items (like C++)
+                        // Interpolate between before and after items 
                         let before_item = self.items[before];
                         let after_item = self.items[after];
                         let before_weight = self.cumulative_weights[before];
