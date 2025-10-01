@@ -1,6 +1,7 @@
 //! Iterator implementations for REQ sketch inspection.
 
 use crate::compactor::Compactor;
+use crate::TotalOrd;
 
 /// Iterator over (item, weight) pairs in a REQ sketch.
 ///
@@ -10,7 +11,7 @@ use crate::compactor::Compactor;
 /// Zero-allocation implementation that works directly with slices.
 pub struct ReqSketchIterator<'a, T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     compactors: &'a [Compactor<T>],
     current_level: usize,
@@ -20,7 +21,7 @@ where
 
 impl<'a, T> ReqSketchIterator<'a, T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     /// Creates a new iterator over the compactors.
     pub(crate) fn new(compactors: &'a [Compactor<T>]) -> Self {
@@ -55,7 +56,7 @@ where
 
 impl<'a, T> Iterator for ReqSketchIterator<'a, T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     type Item = (T, u64);
 
@@ -82,7 +83,7 @@ where
 /// Zero-allocation implementation using direct slice iteration.
 pub struct CompactorIterator<'a, T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     items_iter: std::slice::Iter<'a, T>,
     weight: u64,
@@ -90,7 +91,7 @@ where
 
 impl<'a, T> CompactorIterator<'a, T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     /// Creates a new iterator for a compactor.
     pub fn new(compactor: &'a Compactor<T>) -> Self {
@@ -103,7 +104,7 @@ where
 
 impl<'a, T> Iterator for CompactorIterator<'a, T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     type Item = (T, u64);
 

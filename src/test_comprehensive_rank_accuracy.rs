@@ -28,7 +28,7 @@ mod tests {
             let true_quantile = rank * (n - 1) as f64;
 
             // Get our estimated rank for this true quantile
-            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
             let rank_error = (estimated_rank - rank).abs();
             let error_percent = (rank_error / rank) * 100.0;
@@ -47,7 +47,7 @@ mod tests {
 
         for &rank in &extreme_ranks {
             let true_quantile = rank * (n - 1) as f64;
-            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
             let rank_error = (estimated_rank - rank).abs();
             let error_percent = (rank_error / rank) * 100.0;
 
@@ -62,7 +62,7 @@ mod tests {
         // Check if our estimates are within theoretical bounds
         for &rank in &test_ranks {
             let true_quantile = rank * (n - 1) as f64;
-            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
             // Test 1, 2, and 3 sigma bounds
             let within_1sigma = {

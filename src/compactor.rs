@@ -3,7 +3,7 @@
 //! Each level in the REQ sketch uses a compactor to maintain a bounded set of items
 //! with deterministic compaction when capacity is exceeded.
 
-use crate::{RankAccuracy, Result};
+use crate::{RankAccuracy, Result, TotalOrd};
 // use rand::Rng;  // Will be used later for randomized compaction
 use std::cmp::Ordering;
 
@@ -55,7 +55,7 @@ pub struct Compactor<T> {
 
 impl<T> Compactor<T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     /// Creates a new compactor for the given level.
     ///
@@ -161,7 +161,7 @@ where
 
         // Two-pointer merge into scratch buffer
         while i < a.len() && j < b.len() {
-            if a[i].partial_cmp(&b[j]).unwrap_or(std::cmp::Ordering::Equal).is_le() {
+            if a[i].total_cmp(&b[j]).is_le() {
                 self.scratch_buffer.push(a[i].clone());
                 i += 1;
             } else {
@@ -189,7 +189,7 @@ where
     pub fn sort(&mut self) {
         if !self.is_sorted {
             // Use unstable sort for better performance (stable not needed for REQ sketch)
-            self.items.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            self.items.sort_unstable_by(|a, b| a.total_cmp(b));
             self.is_sorted = true;
         }
     }
@@ -209,7 +209,7 @@ where
 
         // Sort only the compaction range (avoid sorting the whole level)
         self.items[compaction_range.0..compaction_range.1]
-            .sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            .sort_unstable_by(|a, b| a.total_cmp(b));
         self.is_sorted = false; // level as a whole might no longer be fully sorted
 
         // Must have at least 2 items to compact
@@ -421,7 +421,9 @@ where
         let position = if inclusive {
             // inclusive: use upper_bound (first position where item < items[pos])
             // This finds the first position where the item would be placed after all equal items
-            match self.items.binary_search_by(|probe| probe.partial_cmp(item).unwrap()) {
+            match self.items.binary_search_by(|probe| {
+                probe.total_cmp(item)
+            }) {
                 Ok(pos) => {
                     // Found exact match, find the last occurrence
                     let mut end_pos = pos;
@@ -435,7 +437,9 @@ where
         } else {
             // exclusive: use lower_bound (first position where !(items[pos] < item))
             // This finds the first position where the item would be placed before all equal items
-            match self.items.binary_search_by(|probe| probe.partial_cmp(item).unwrap()) {
+            match self.items.binary_search_by(|probe| {
+                probe.total_cmp(item)
+            }) {
                 Ok(pos) => {
                     // Found exact match, find the first occurrence
                     let mut start_pos = pos;
@@ -457,7 +461,7 @@ where
 // Specialized implementations for Copy types (numeric fast-path)
 impl<T> Compactor<T>
 where
-    T: Copy + PartialOrd + Clone,
+    T: Copy + Clone + TotalOrd + PartialEq,
 {
     /// Fast compaction for Copy types - avoids cloning
     pub fn compact_into_fast(&mut self, _rank_accuracy: RankAccuracy, out: &mut Vec<T>) {
@@ -472,7 +476,7 @@ where
 
         // Sort only the compaction range (avoid sorting the whole level)
         self.items[compaction_range.0..compaction_range.1]
-            .sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            .sort_unstable_by(|a, b| a.total_cmp(b));
         self.is_sorted = false; // level as a whole might no longer be fully sorted
 
         // Must have at least 2 items to compact
@@ -537,7 +541,7 @@ where
 
         // Two-pointer merge into scratch buffer - NO CLONE for Copy types
         while i < a.len() && j < b.len() {
-            if a[i].partial_cmp(&b[j]).unwrap_or(std::cmp::Ordering::Equal).is_le() {
+            if a[i].total_cmp(&b[j]).is_le() {
                 self.scratch_buffer.push(a[i]); // Direct copy
                 i += 1;
             } else {

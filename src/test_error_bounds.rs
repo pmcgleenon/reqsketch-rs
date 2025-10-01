@@ -24,7 +24,7 @@ mod tests {
         for &rank in &test_ranks {
             // Test 1: For a known quantile, check if our rank estimate is within bounds
             let true_quantile = rank * (n - 1) as f64;
-            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
             // Get theoretical error bounds at 3 standard deviations (99.7% confidence)
             let lower_bound = sketch.get_rank_lower_bound(rank, 3);
@@ -63,7 +63,7 @@ mod tests {
         println!("-\t--------\t--------\t--------");
 
         for &k in &k_values {
-            let mut sketch = ReqSketch::builder().k(k).unwrap().build().unwrap();
+            let mut sketch = ReqSketch::builder().k(k).expect("Operation should succeed").build().expect("Operation should succeed");
 
             // Add enough data to trigger estimation mode
             for i in 0..10000 {
@@ -99,10 +99,10 @@ mod tests {
         for &rank in &test_ranks {
             let mut hra_sketch = ReqSketch::builder()
                 .rank_accuracy(RankAccuracy::HighRank)
-                .build().unwrap();
+                .build().expect("Operation should succeed");
             let mut lra_sketch = ReqSketch::builder()
                 .rank_accuracy(RankAccuracy::LowRank)
-                .build().unwrap();
+                .build().expect("Operation should succeed");
 
             // Add data to both sketches
             for i in 0..10000 {

@@ -39,6 +39,7 @@
 //! ```
 
 use std::fmt;
+use std::cmp::Ordering;
 
 pub mod builder;
 pub mod compactor;
@@ -46,6 +47,41 @@ pub mod error;
 pub mod iter;
 pub mod sorted_view;
 use sorted_view::IntoF64;
+
+/// Trait for total ordering that handles NaN consistently.
+pub trait TotalOrd {
+    fn total_cmp(&self, other: &Self) -> Ordering;
+}
+
+impl TotalOrd for f64 {
+    #[inline(always)]
+    fn total_cmp(&self, other: &Self) -> Ordering {
+        f64::total_cmp(self, other)
+    }
+}
+
+impl TotalOrd for f32 {
+    #[inline(always)]
+    fn total_cmp(&self, other: &Self) -> Ordering {
+        f32::total_cmp(self, other)
+    }
+}
+
+// Implementations for common integer types
+macro_rules! impl_total_ord_for_ord {
+    ($($t:ty),*) => {
+        $(
+            impl TotalOrd for $t {
+                #[inline(always)]
+                fn total_cmp(&self, other: &Self) -> Ordering {
+                    self.cmp(other)
+                }
+            }
+        )*
+    };
+}
+
+impl_total_ord_for_ord!(i8, u8, i16, u16, i32, u32, i64, u64, i128, u128, isize, usize);
 
 /// Trait for types that can be used efficiently in REQ sketches.
 /// Implemented for numeric types that support fast copy semantics.
@@ -148,7 +184,7 @@ pub struct ReqSketch<T> {
 
 impl<T> ReqSketch<T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     /// Creates a new REQ sketch with default parameters.
     ///
@@ -250,7 +286,7 @@ where
         if let Some(other_min) = &other.min_item {
             match &self.min_item {
                 None => self.min_item = Some(other_min.clone()),
-                Some(min) if other_min < min => self.min_item = Some(other_min.clone()),
+                Some(min) if other_min.total_cmp(min).is_lt() => self.min_item = Some(other_min.clone()),
                 _ => {}
             }
         }
@@ -258,7 +294,7 @@ where
         if let Some(other_max) = &other.max_item {
             match &self.max_item {
                 None => self.max_item = Some(other_max.clone()),
-                Some(max) if other_max > max => self.max_item = Some(other_max.clone()),
+                Some(max) if other_max.total_cmp(max).is_gt() => self.max_item = Some(other_max.clone()),
                 _ => {}
             }
         }
@@ -290,7 +326,7 @@ where
         self.compactors
             .iter()
             .flat_map(|c| c.iter())
-            .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .min_by(|a, b| a.total_cmp(b))
     }
 
     /// Returns the maximum item seen, or None if empty.
@@ -299,7 +335,7 @@ where
         self.compactors
             .iter()
             .flat_map(|c| c.iter())
-            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| a.total_cmp(b))
     }
 
     /// Returns the approximate rank of the given item.
@@ -459,7 +495,7 @@ where
         }
 
         // Sort by item value (items are references, so this is cheap)
-        weighted_items.sort_by(|a, b| a.0.partial_cmp(b.0).unwrap_or(std::cmp::Ordering::Equal));
+        weighted_items.sort_by(|a, b| a.0.total_cmp(&b.0));
 
         // Calculate target weight
         let target_weight = (rank * self.total_n as f64) as u64;
@@ -493,7 +529,8 @@ where
             self.sorted_view_cache = Some(self.compute_sorted_view()?);
         }
 
-        Ok(self.sorted_view_cache.as_ref().unwrap())
+        self.sorted_view_cache.as_ref()
+            .ok_or(ReqError::CacheInvalid)
     }
 
     fn compute_sorted_view(&self) -> Result<SortedView<T>> {
@@ -677,7 +714,7 @@ where
 
 impl<T> Default for ReqSketch<T>
 where
-    T: PartialOrd + Clone,
+    T: Clone + TotalOrd + PartialEq,
 {
     fn default() -> Self {
         Self::new()
@@ -688,7 +725,7 @@ where
 
 impl<T> fmt::Display for ReqSketch<T>
 where
-    T: fmt::Display + PartialOrd + Clone,
+    T: fmt::Display + Clone + TotalOrd + PartialEq,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "REQ Sketch Summary:")?;
@@ -768,7 +805,7 @@ mod tests {
             .and_then(|builder| builder.build());
 
         assert!(sketch.is_ok());
-        let sketch = sketch.unwrap();
+        let sketch = sketch.expect("Builder should succeed");
         assert_eq!(sketch.k(), 16);
         assert_eq!(sketch.rank_accuracy(), RankAccuracy::LowRank);
     }
@@ -843,16 +880,16 @@ mod tests {
         println!("sketch2b len: {}, items: {:?}", sketch2b.len(), sketch2b.iter().collect::<Vec<_>>());
 
         // Test merge order: A + B vs B + A
-        sketch1a.merge(&sketch2a).unwrap();  // sketch1a + sketch2a
-        sketch2b.merge(&sketch1b).unwrap();  // sketch2b + sketch1b
+        sketch1a.merge(&sketch2a).expect("Merge should succeed");  // sketch1a + sketch2a
+        sketch2b.merge(&sketch1b).expect("Merge should succeed");  // sketch2b + sketch1b
 
         println!("After merge:");
         println!("sketch1a+sketch2a len: {}", sketch1a.len());
         println!("sketch2b+sketch1b len: {}", sketch2b.len());
 
         if !sketch1a.is_empty() && !sketch2b.is_empty() {
-            let q1: f64 = sketch1a.quantile(0.5, SearchCriteria::Inclusive).unwrap();
-            let q2: f64 = sketch2b.quantile(0.5, SearchCriteria::Inclusive).unwrap();
+            let q1: f64 = sketch1a.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
+            let q2: f64 = sketch2b.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
 
             println!("Quantiles: {} vs {}", q1, q2);
             let diff = (q1 - q2).abs();
@@ -1089,7 +1126,7 @@ mod tests {
         println!("Is estimation mode: {}", sketch.is_estimation_mode());
         println!("Total weight: {}", sketch.len());
 
-        let q01 = sketch.quantile(0.1, SearchCriteria::Inclusive).unwrap();
+        let q01 = sketch.quantile(0.1, SearchCriteria::Inclusive).expect("Quantile should succeed");
         let expected = 4999.9;
         let error = (q01 - expected).abs() / expected;
 
@@ -1107,14 +1144,14 @@ mod tests {
         }
 
         // Also test a smaller quantile to see if behavior is consistent
-        let q001 = sketch.quantile(0.01, SearchCriteria::Inclusive).unwrap();
+        let q001 = sketch.quantile(0.01, SearchCriteria::Inclusive).expect("Quantile should succeed");
         let expected_001 = 499.99;
         let error_001 = (q001 - expected_001).abs() / expected_001;
         println!("\n0.01 quantile: {}", q001);
         println!("Expected: {}", expected_001);
         println!("Relative error: {:.2}%", error_001 * 100.0);
 
-        let median = sketch.quantile(0.5, SearchCriteria::Inclusive).unwrap();
+        let median = sketch.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
         let expected_median = 24999.5;
         let median_error = (median - expected_median).abs() / expected_median;
         println!("\n0.5 quantile (median): {}", median);
