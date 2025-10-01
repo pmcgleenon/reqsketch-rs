@@ -1,6 +1,6 @@
 //! Builder pattern implementation for REQ sketch construction.
 
-use crate::{RankAccuracy, RankMethod, ReqError, ReqSketch, Result, TotalOrd};
+use crate::{RankAccuracy, ReqError, ReqSketch, Result, TotalOrd};
 use std::marker::PhantomData;
 
 /// Builder for constructing REQ sketches with custom parameters.
@@ -29,7 +29,6 @@ use std::marker::PhantomData;
 pub struct ReqSketchBuilder<T> {
     k: u16,
     rank_accuracy: RankAccuracy,
-    rank_method: RankMethod,
     _phantom: PhantomData<T>,
 }
 
@@ -42,12 +41,10 @@ where
     /// Defaults:
     /// - k = 12 (roughly 1% relative error at 95% confidence)
     /// - rank_accuracy = HighRank
-    /// - rank_method = StepFunction (C++ compatible)
     pub fn new() -> Self {
         Self {
             k: 12,
             rank_accuracy: RankAccuracy::HighRank,
-            rank_method: RankMethod::StepFunction,
             _phantom: PhantomData,
         }
     }
@@ -74,23 +71,12 @@ where
         self
     }
 
-    /// Sets the rank calculation method.
-    ///
-    /// # Arguments
-    /// * `method` - The rank calculation method to use
-    ///   - `StepFunction`: C++ compatible step function (default)
-    ///   - `Interpolation`: Enhanced precision with linear interpolation
-    pub fn rank_method(mut self, method: RankMethod) -> Self {
-        self.rank_method = method;
-        self
-    }
 
     /// Builds the REQ sketch with the configured parameters.
     pub fn build(self) -> Result<ReqSketch<T>> {
         Ok(ReqSketch {
             k: self.k,
             rank_accuracy: self.rank_accuracy,
-            rank_method: self.rank_method,
             total_n: 0,
             max_nom_size: 0,
             num_retained: 0,
@@ -112,10 +98,6 @@ where
         self.rank_accuracy
     }
 
-    /// Returns the currently configured rank method.
-    pub fn get_rank_method(&self) -> RankMethod {
-        self.rank_method
-    }
 }
 
 impl<T> Default for ReqSketchBuilder<T>
