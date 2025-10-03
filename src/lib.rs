@@ -49,7 +49,14 @@ pub trait TotalOrd {
 impl TotalOrd for f64 {
     #[inline(always)]
     fn total_cmp(&self, other: &Self) -> Ordering {
-        f64::total_cmp(self, other)
+        // Fast path for normal values (common case)
+        // partial_cmp is significantly faster than total_cmp
+        if let Some(ord) = self.partial_cmp(other) {
+            ord
+        } else {
+            // Fallback to total_cmp for NaN/infinity cases (rare)
+            f64::total_cmp(self, other)
+        }
     }
 }
 
@@ -205,7 +212,7 @@ where
 
     /// Returns the number of items currently retained in the sketch.
     pub fn num_retained(&self) -> u32 {
-        self.compactors.iter().map(|c| c.num_items()).sum()
+        self.num_retained
     }
 
     /// Returns true if this sketch is in estimation mode (has compacted data).
