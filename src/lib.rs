@@ -4,14 +4,8 @@
 //! This implementation is based on the paper "Relative Error Streaming Quantiles" by
 //! Graham Cormode, Zohar Karnin, Edo Liberty, Justin Thaler, Pavel Veselý.
 //!
-//! ## Features
-//!
-//! - **High Performance**: Optimized for streaming quantile estimation with relative error guarantees
-//! - **Generic**: Works with any type that implements `PartialOrd + Clone`
-//! - **Memory Efficient**: Compact representation with configurable memory/accuracy tradeoffs
-//! - **Builder Pattern**: Ergonomic construction with sensible defaults
-//! - **Iterator Support**: Full iterator support for inspection and debugging
-//! - **Serialization**: Optional serde support for persistence
+//! And on the C++ implementation in Apache DataSketches
+//! https://github.com/apache/datasketches-cpp
 //!
 //! ## Quick Start
 //!
@@ -321,8 +315,6 @@ where
     }
 
     /// Returns the approximate rank of the given item.
-    ///
-    /// Uses step function rank calculation for C++ compatibility.
     ///
     /// # Arguments
     /// * `item` - The item to find the rank for
