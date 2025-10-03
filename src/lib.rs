@@ -606,6 +606,7 @@ where
         self.get_sorted_view()
     }
 
+
     /// Returns the lower bound for the rank of a given quantile at the specified confidence level.
     ///
     /// # Arguments

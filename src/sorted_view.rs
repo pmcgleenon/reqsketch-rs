@@ -76,7 +76,8 @@ where
         self.total_weight
     }
 
-    /// Returns the approximate rank of the given item without interpolation.
+
+    /// Returns the approximate rank of the given item with interpolation for numeric types.
     ///
     /// # Arguments
     /// * `item` - The item to find the rank for

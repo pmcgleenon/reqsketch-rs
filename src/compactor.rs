@@ -269,6 +269,7 @@ where
         1u64 << self.lg_weight
     }
 
+
     /// Returns the current state for debugging.
     #[cfg(test)]
     pub fn state(&self) -> u64 {
@@ -311,7 +312,14 @@ where
 
         let (low, high) = match self.rank_accuracy {
             RankAccuracy::HighRank => {
-                // HRA: low = 0, high = num_items - non_compact
+                // HRA: Protect small ranks by compacting HIGH sections (high values)
+                // This means we compact from [non_compact, num_items] (top end)
+                let low = non_compact.min(self.items.len());
+                (low, self.items.len())
+            }
+            RankAccuracy::LowRank => {
+                // LRA: Protect high ranks by compacting LOW sections (low values)
+                // This means we compact from [0, num_items - non_compact] (bottom end)
                 let high = if self.items.len() >= non_compact {
                     self.items.len() - non_compact
                 } else {
@@ -319,13 +327,17 @@ where
                 };
                 (0, high)
             }
-            RankAccuracy::LowRank => {
-                // LRA: low = non_compact, high = num_items
-                // Apply bounds check only when assigning to low
-                let low = non_compact.min(self.items.len());
-                (low, self.items.len())
-            }
         };
+
+        // Empty window safety: ensure we have at least 2 items to compact
+        if high <= low || (high - low) < 2 {
+            return (0, 0); // Signal no compaction needed
+        }
+
+        // Ensure minimum section size for meaningful compaction
+        if self.items.len() < 2 * self.section_size as usize {
+            return (0, 0); // Skip compaction if level too small
+        }
 
         (low, high)
     }
