@@ -4,13 +4,11 @@
 //! with deterministic compaction when capacity is exceeded.
 
 use crate::{RankAccuracy, Result, TotalOrd};
-// use rand::Rng;  // Will be used later for randomized compaction
 use std::cmp::Ordering;
 
-/// C++ compatible nearest_even function
 fn nearest_even(value: f32) -> u32 {
-    // Exact C++ implementation: static_cast<uint32_t>(round(value / 2)) << 1;
     // But enforce MIN_K=4 constraint like C++ to prevent infinite loops
+    // TODO check this
     const MIN_K: u32 = 4;
     (((value / 2.0).round() as u32) << 1).max(MIN_K)
 }
@@ -49,7 +47,7 @@ pub struct Compactor<T> {
     rank_accuracy: RankAccuracy,
     /// Raw section size (may be fractional)
     section_size_raw: f32,
-    /// Random bit for compaction (matches C++ coin_)
+    /// Random bit for compaction 
     coin: bool,
 }
 
@@ -86,7 +84,7 @@ where
             // COLD FIELDS
             rank_accuracy,
             section_size_raw,
-            coin: rand::random::<bool>(), // C++: coin_(random_utils::random_bit())
+            coin: rand::random::<bool>(), 
         }
     }
 
@@ -102,7 +100,6 @@ where
 
     /// Returns the nominal capacity of this compactor.
     pub fn nominal_capacity(&self) -> u32 {
-        // C++ uses MULTIPLIER = 2
         2 * self.section_size * self.num_sections as u32
     }
 
@@ -203,7 +200,7 @@ where
             return;
         }
 
-        // Calculate sections to compact based on state (C++ logic)
+        // Calculate sections to compact based on state 
         let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
         let compaction_range = self.compute_compaction_range(secs_to_compact);
 
@@ -218,12 +215,9 @@ where
             return;
         }
 
-        // Ensure enough sections for growth (C++: single call in compact)
+        // Ensure enough sections for growth 
         self.ensure_enough_sections();
 
-        // C++ coin flip logic:
-        // if ((state_ & 1) == 1) { coin_ = !coin_; } // for odd flip coin;
-        // else { coin_ = random_utils::random_bit(); } // random coin flip
         if (self.state & 1) == 1 {
             self.coin = !self.coin; // flip coin for odd states
         } else {
@@ -290,11 +284,10 @@ where
     // Private helper methods
 
     fn ensure_enough_sections(&mut self) -> bool {
-        // Implement exact C++ section growth algorithm
         let ssr = self.section_size_raw / (2.0_f32).sqrt();
         let ne = nearest_even(ssr);
 
-        const MIN_K: u32 = 4; // From C++ req_constants::MIN_K
+        const MIN_K: u32 = 4; // matches datasketches-cpp
 
         if self.state >= (1u64 << (self.num_sections - 1)) && ne >= MIN_K {
             self.section_size_raw = ssr;
@@ -308,18 +301,14 @@ where
 
     #[inline(always)]
     fn compute_compaction_range(&self, secs_to_compact: u8) -> (usize, usize) {
-        // Implement exact C++ logic from compute_compaction_range
         let nom_capacity = self.nominal_capacity() as usize;
         let mut non_compact = nom_capacity / 2 + (self.num_sections - secs_to_compact) as usize * self.section_size as usize;
 
-        // C++ logic: make compacted region even BEFORE bounds checking
         // if (((num_items_ - non_compact) & 1) == 1) ++non_compact;
         if ((self.items.len() - non_compact) & 1) == 1 {
             non_compact += 1;
         }
 
-        // C++ logic: const uint32_t low = hra_ ? 0 : non_compact;
-        //           const uint32_t high = hra_ ? num_items_ - non_compact : num_items_;
         let (low, high) = match self.rank_accuracy {
             RankAccuracy::HighRank => {
                 // HRA: low = 0, high = num_items - non_compact
@@ -349,17 +338,11 @@ where
             return &self.scratch_buffer;
         }
 
-        // Implement exact C++ coin flip logic
-        // From C++ code: if ((state_ & 1) == 1) { coin_ = !coin_; } else { coin_ = random_bit(); }
         let odds = if (self.state & 1) == 1 {
             // For odd state, flip the coin from previous state
-            // We need to store coin state, but for now use deterministic pattern
-            // that creates similar distribution to random
             (self.state >> 1) & 1 == 0 // Flip based on previous state
         } else {
-            // For even state, C++ uses random_bit()
-            // Use deterministic but pseudo-random pattern for reproducibility
-            // This creates a good distribution while remaining deterministic
+            // For even state
             ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
         };
 
@@ -384,7 +367,6 @@ where
             return Vec::new();
         }
 
-        // Implement exact C++ coin flip logic
         let odds = if (self.state & 1) == 1 {
             (self.state >> 1) & 1 == 0
         } else {
@@ -403,7 +385,6 @@ where
     }
 
     /// Computes the weight contribution of this compactor for rank calculation.
-    /// This matches the C++ compute_weight method exactly.
     ///
     /// # Arguments
     /// * `item` - The item to find the weight for
@@ -412,12 +393,12 @@ where
     /// # Returns
     /// The weight contributed by this compactor (number of items * 2^lg_weight)
     pub fn compute_weight(&mut self, item: &T, inclusive: bool) -> u64 {
-        // Ensure items are sorted for binary search (matches C++ behavior)
+        // Ensure items are sorted for binary search 
         if !self.is_sorted {
             self.sort();
         }
 
-        // Perform binary search to find position (matches C++ std::upper_bound/std::lower_bound)
+        // Perform binary search to find position
         let position = if inclusive {
             // inclusive: use upper_bound (first position where item < items[pos])
             // This finds the first position where the item would be placed after all equal items
@@ -453,7 +434,6 @@ where
         };
 
         // Return distance (number of items) shifted by lg_weight
-        // This matches C++: std::distance(begin(), it) << lg_weight_
         (position as u64) << self.lg_weight
     }
 }
@@ -470,7 +450,7 @@ where
             return;
         }
 
-        // Calculate sections to compact based on state (C++ logic)
+        // Calculate sections to compact based on state 
         let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
         let compaction_range = self.compute_compaction_range(secs_to_compact);
 
@@ -565,7 +545,6 @@ where
     }
 }
 
-/// Rounds a float to the nearest even integer, matching C++ implementation.
 
 #[cfg(test)]
 mod tests {
