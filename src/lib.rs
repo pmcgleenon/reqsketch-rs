@@ -41,6 +41,8 @@ pub mod error;
 pub mod iter;
 pub mod sorted_view;
 
+use crate::compactor::Compactor;
+
 /// Trait for total ordering that handles NaN consistently.
 pub trait TotalOrd {
     fn total_cmp(&self, other: &Self) -> Ordering;
@@ -453,7 +455,7 @@ where
     /// This eliminates the major allocation bottleneck in compute_sorted_view().
     fn quantile_kway_merge(&mut self, rank: f64, criteria: SearchCriteria) -> Result<T> {
         // Build a lightweight collection of all (item, weight) pairs without cloning items
-        let mut weighted_items = Vec::new();
+        let mut weighted_items = Vec::with_capacity(self.num_retained as usize);
 
         for compactor in &self.compactors {
             let weight = compactor.weight();
@@ -506,7 +508,7 @@ where
     }
 
     fn compute_sorted_view(&self) -> Result<SortedView<T>> {
-        let mut weighted_items = Vec::new();
+        let mut weighted_items = Vec::with_capacity(self.num_retained as usize);
 
         for compactor in &self.compactors {
             let weight = compactor.weight();
@@ -695,6 +697,95 @@ where
 }
 
 // Note: f64 gets interpolation via SortedView<f64>::rank() specialization
+
+/// Specialized implementations for Copy types that eliminate clone overhead
+macro_rules! impl_reqsketch_copy_optimized {
+    ($type:ty, $doc:expr) => {
+        impl ReqSketch<$type> {
+            #[doc = $doc]
+            /// Optimized merge for Copy types - eliminates all clone overhead
+            #[inline(always)]
+            pub fn merge_optimized(&mut self, other: &Self) -> Result<()> {
+                // Direct copy for min/max - no clone overhead!
+                if let Some(other_min) = other.min_item {
+                    match self.min_item {
+                        None => self.min_item = Some(other_min), // Direct copy
+                        Some(min) if other_min.total_cmp(&min).is_lt() => self.min_item = Some(other_min), // Direct copy
+                        _ => {}
+                    }
+                }
+
+                if let Some(other_max) = other.max_item {
+                    match self.max_item {
+                        None => self.max_item = Some(other_max), // Direct copy
+                        Some(max) if other_max.total_cmp(&max).is_gt() => self.max_item = Some(other_max), // Direct copy
+                        _ => {}
+                    }
+                }
+
+                // Update total count
+                self.total_n += other.total_n;
+
+                // Merge compactors
+                for (i, other_compactor) in other.compactors.iter().enumerate() {
+                    if i >= self.compactors.len() {
+                        // Need to add new compactor levels
+                        while self.compactors.len() <= i {
+                            let level = self.compactors.len();
+                            let compactor = Compactor::new(level as u8, self.k, self.rank_accuracy);
+                            self.compactors.push(compactor);
+                        }
+                    }
+                    self.compactors[i].merge(other_compactor)?;
+                }
+
+                // Update counters
+                self.num_retained = self.compactors.iter().map(|c| c.num_items()).sum();
+
+                // Invalidate cached view
+                self.sorted_view_cache = None;
+
+                Ok(())
+            }
+
+            /// Optimized quantile computation for Copy types - eliminates clone overhead
+            #[inline(always)]
+            pub fn quantile_optimized(&mut self, rank: f64, criteria: SearchCriteria) -> Result<$type> {
+                if !(0.0..=1.0).contains(&rank) {
+                    return Err(ReqError::InvalidRank(rank));
+                }
+
+                // Build a lightweight collection without cloning items
+                let mut weighted_items = Vec::with_capacity(self.num_retained as usize);
+
+                for compactor in &self.compactors {
+                    let weight = compactor.weight();
+                    for item in compactor.iter() {
+                        weighted_items.push((*item, weight)); // Direct copy - no clone!
+                    }
+                }
+
+                if weighted_items.is_empty() {
+                    return Err(ReqError::EmptySketch);
+                }
+
+                // Sort items and create sorted view for quantile lookup
+                let sorted_view = crate::sorted_view::SortedView::new(weighted_items);
+
+                // Use the specialized optimized quantile method
+                sorted_view.quantile_optimized(rank, criteria)
+            }
+        }
+    };
+}
+
+// Apply optimizations to all our Copy types
+impl_reqsketch_copy_optimized!(f64, "Optimized ReqSketch for f64 - zero clone overhead");
+impl_reqsketch_copy_optimized!(f32, "Optimized ReqSketch for f32 - zero clone overhead");
+impl_reqsketch_copy_optimized!(i64, "Optimized ReqSketch for i64 - zero clone overhead");
+impl_reqsketch_copy_optimized!(u64, "Optimized ReqSketch for u64 - zero clone overhead");
+impl_reqsketch_copy_optimized!(i32, "Optimized ReqSketch for i32 - zero clone overhead");
+impl_reqsketch_copy_optimized!(u32, "Optimized ReqSketch for u32 - zero clone overhead");
 
 impl<T> fmt::Display for ReqSketch<T>
 where

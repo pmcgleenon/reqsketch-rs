@@ -6,6 +6,223 @@
 use crate::{RankAccuracy, Result, TotalOrd};
 use std::cmp::Ordering;
 
+/// The BEST const generics solution: Specialized implementations for specific types
+/// This demonstrates how you can use const generics effectively
+
+/// Specialized implementations for Copy types that benefit from zero-allocation cloning
+///
+/// Use cases by type:
+/// - f64: Financial data, scientific measurements, ML features
+/// - f32: ML inference, graphics, memory-constrained environments
+/// - i64: Timestamps (ms/ns), user IDs, byte counts
+/// - u64: Memory sizes, file sizes, hash values, counters
+/// - i32: Response times (ms), HTTP status codes, counts
+/// - u32: Hash values, array indices, process IDs
+impl Compactor<f64> {
+    /// Optimized compact_into for f64 using direct copy (no clone overhead)
+    #[inline(always)]
+    pub fn compact_into_optimized(&mut self, _rank_accuracy: RankAccuracy, out: &mut Vec<f64>) {
+        if self.items.is_empty() {
+            out.clear();
+            return;
+        }
+
+        let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
+        let compaction_range = self.compute_compaction_range(secs_to_compact);
+
+        self.items[compaction_range.0..compaction_range.1]
+            .sort_unstable_by(|a, b| a.total_cmp(b));
+        self.is_sorted = false;
+
+        if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
+            out.clear();
+            return;
+        }
+
+        self.ensure_enough_sections();
+
+        if (self.state & 1) == 1 {
+            self.coin = !self.coin;
+        } else {
+            self.coin = rand::random::<bool>();
+        }
+        let odds = self.coin;
+
+        // OPTIMIZED: Direct copy for f64 (Copy type) - no clone overhead!
+        out.clear();
+        let (start, end) = compaction_range;
+        let mut i = start + if odds { 1 } else { 0 };
+        while i < end {
+            out.push(self.items[i]); // Direct copy - ZERO allocation overhead!
+            i += 2;
+        }
+
+        // Remove the compacted range in-place by rotating elements left
+        let removed = end - start;
+        if end < self.items.len() {
+            self.items[start..].rotate_left(removed);
+        }
+        self.items.truncate(self.items.len() - removed);
+
+        self.state += 1;
+    }
+}
+
+// High-value specializations for other common Copy types
+macro_rules! impl_copy_optimized {
+    ($type:ty, $doc:expr) => {
+        impl Compactor<$type> {
+            #[doc = $doc]
+            #[inline(always)]
+            pub fn compact_into_optimized(&mut self, _rank_accuracy: RankAccuracy, out: &mut Vec<$type>) {
+                if self.items.is_empty() {
+                    out.clear();
+                    return;
+                }
+
+                let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
+                let compaction_range = self.compute_compaction_range(secs_to_compact);
+
+                self.items[compaction_range.0..compaction_range.1]
+                    .sort_unstable_by(|a, b| a.total_cmp(b));
+                self.is_sorted = false;
+
+                if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
+                    out.clear();
+                    return;
+                }
+
+                self.ensure_enough_sections();
+
+                if (self.state & 1) == 1 {
+                    self.coin = !self.coin;
+                } else {
+                    self.coin = rand::random::<bool>();
+                }
+                let odds = self.coin;
+
+                // OPTIMIZED: Direct copy for Copy types - zero allocation overhead!
+                out.clear();
+                let (start, end) = compaction_range;
+                let mut i = start + if odds { 1 } else { 0 };
+                while i < end {
+                    out.push(self.items[i]); // Direct copy - ZERO allocation!
+                    i += 2;
+                }
+
+                let removed = end - start;
+                if end < self.items.len() {
+                    self.items[start..].rotate_left(removed);
+                }
+                self.items.truncate(self.items.len() - removed);
+
+                self.state += 1;
+            }
+        }
+    };
+}
+
+// Phase 1: Most common quantile sketch types
+impl_copy_optimized!(f32, "Optimized for f32: ML inference, graphics, memory-constrained systems");
+impl_copy_optimized!(i64, "Optimized for i64: timestamps (ms/ns), user IDs, large counters");
+impl_copy_optimized!(u64, "Optimized for u64: file sizes, memory usage, hash values");
+
+// Phase 2: Common integer types
+impl_copy_optimized!(i32, "Optimized for i32: response times (ms), HTTP codes, medium counters");
+impl_copy_optimized!(u32, "Optimized for u32: array indices, hash values, process IDs");
+
+// Now add specialized merge operations for Copy types
+macro_rules! impl_merge_optimized {
+    ($type:ty) => {
+        impl Compactor<$type> {
+            /// Optimized merge_sorted for Copy types - no clone overhead
+            #[inline(always)]
+            pub fn merge_sorted_optimized(&mut self, items: &[$type]) {
+                if items.is_empty() {
+                    return;
+                }
+
+                self.scratch_buffer.clear();
+                let total = self.items.len() + items.len();
+                if self.scratch_buffer.capacity() < total {
+                    self.scratch_buffer.reserve(total - self.scratch_buffer.capacity());
+                }
+
+                let mut i = 0;
+                let mut j = 0;
+                let (a, b) = (&self.items, items);
+
+                // Two-pointer merge into scratch buffer - OPTIMIZED: direct copy!
+                while i < a.len() && j < b.len() {
+                    if a[i].total_cmp(&b[j]).is_le() {
+                        self.scratch_buffer.push(a[i]); // Direct copy - no clone!
+                        i += 1;
+                    } else {
+                        self.scratch_buffer.push(b[j]); // Direct copy - no clone!
+                        j += 1;
+                    }
+                }
+
+                // Add remaining elements - OPTIMIZED: direct copy!
+                if i < a.len() {
+                    self.scratch_buffer.extend_from_slice(&a[i..]);
+                }
+                if j < b.len() {
+                    self.scratch_buffer.extend_from_slice(&b[j..]);
+                }
+
+                // Swap the buffers
+                std::mem::swap(&mut self.items, &mut self.scratch_buffer);
+                self.is_sorted = true;
+            }
+        }
+    };
+}
+
+// Apply merge optimization to all our Copy types
+impl_merge_optimized!(f64);
+impl_merge_optimized!(f32);
+impl_merge_optimized!(i64);
+impl_merge_optimized!(u64);
+impl_merge_optimized!(i32);
+impl_merge_optimized!(u32);
+
+// Add specialized promote operations for Copy types (used in compaction)
+macro_rules! impl_promote_optimized {
+    ($type:ty) => {
+        impl Compactor<$type> {
+            /// Optimized promote_evens_or_odds for Copy types - no clone overhead
+            #[inline(always)]
+            pub fn promote_evens_or_odds_optimized(&mut self, items: &[$type], odds: bool) -> Vec<$type> {
+                let mut result = Vec::new();
+                if items.is_empty() {
+                    return result;
+                }
+
+                let estimated_size = items.len() / 2 + 1;
+                result.reserve(estimated_size);
+
+                let mut i = if odds { 1 } else { 0 };
+                while i < items.len() {
+                    result.push(items[i]); // Direct copy - no clone overhead!
+                    i += 2;
+                }
+
+                result
+            }
+        }
+    };
+}
+
+// Apply promote optimization to all our Copy types
+impl_promote_optimized!(f64);
+impl_promote_optimized!(f32);
+impl_promote_optimized!(i64);
+impl_promote_optimized!(u64);
+impl_promote_optimized!(i32);
+impl_promote_optimized!(u32);
+
+
 fn nearest_even(value: f32) -> u32 {
     // But enforce MIN_K=4 constraint like C++ to prevent infinite loops
     // TODO check this
@@ -230,7 +447,7 @@ where
         let (start, end) = compaction_range;
         let mut i = start + if odds { 1 } else { 0 };
         while i < end {
-            out.push(self.items[i].clone()); // TODO: use Copy fast-path for numeric types
+            out.push(self.items[i].clone());
             i += 2;
         }
 

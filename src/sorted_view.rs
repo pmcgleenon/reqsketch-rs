@@ -296,6 +296,65 @@ where
     }
 }
 
+/// Specialized implementations for Copy types that eliminate clone overhead
+macro_rules! impl_sortedview_copy_optimized {
+    ($type:ty) => {
+        impl SortedView<$type> {
+            /// Optimized quantile for Copy types - eliminates clone overhead
+            #[inline(always)]
+            pub fn quantile_optimized(&self, rank: f64, criteria: SearchCriteria) -> Result<$type> {
+                if !(0.0..=1.0).contains(&rank) {
+                    return Err(ReqError::InvalidRank(rank));
+                }
+
+                if self.items.is_empty() {
+                    return Err(ReqError::EmptySketch);
+                }
+
+                // Handle edge cases - direct copy, no clone!
+                if rank == 0.0 {
+                    return Ok(self.items[0]); // Direct copy
+                }
+
+                if rank == 1.0 {
+                    return Ok(self.items[self.items.len() - 1]); // Direct copy
+                }
+
+                // Calculate the target cumulative weight
+                let total_weight = self.cumulative_weights[self.cumulative_weights.len() - 1];
+                let target_weight = rank * total_weight as f64;
+
+                // Binary search for the quantile
+                let target_weight_u64 = target_weight as u64;
+                let index = match self.cumulative_weights.binary_search(&target_weight_u64) {
+                    Ok(exact_index) => exact_index,
+                    Err(insert_index) => {
+                        if insert_index == 0 {
+                            0
+                        } else {
+                            insert_index - 1
+                        }
+                    }
+                };
+
+                if index >= self.items.len() {
+                    return Ok(self.items[self.items.len() - 1]); // Direct copy
+                }
+
+                Ok(self.items[index]) // Direct copy - no clone overhead!
+            }
+        }
+    };
+}
+
+// Apply to Copy types
+impl_sortedview_copy_optimized!(f64);
+impl_sortedview_copy_optimized!(f32);
+impl_sortedview_copy_optimized!(i64);
+impl_sortedview_copy_optimized!(u64);
+impl_sortedview_copy_optimized!(i32);
+impl_sortedview_copy_optimized!(u32);
+
 #[cfg(test)]
 mod tests {
     use super::*;
