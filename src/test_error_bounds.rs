@@ -50,8 +50,10 @@ mod tests {
                          rank, estimated_rank, lower_bound, upper_bound, error_pct);
             }
 
-            // TODO: Re-enable strict assertion once violations are fixed
-            // assert!(within_bounds, ...);
+            // Assert bounds compliance now that bounds calculation is fixed
+            assert!(within_bounds,
+                "Estimated rank {:.6} for true quantile {:.1} (rank {}) is outside 3-sigma bounds [{:.6}, {:.6}]. Error: {:.2}%. This violates the fundamental REQ sketch guarantee.",
+                estimated_rank, true_quantile, rank, lower_bound, upper_bound, (estimated_rank - rank).abs() / rank * 100.0);
         }
 
         println!("\n✓ All quantile estimates are within 3-sigma bounds as required");

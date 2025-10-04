@@ -653,7 +653,7 @@ where
         let fixed = Self::FIXED_RSE_FACTOR / k as f64;
         let lb_rel = rank - num_std_dev as f64 * relative;
         let lb_fix = rank - num_std_dev as f64 * fixed;
-        lb_rel.max(lb_fix)
+        lb_rel.min(lb_fix).max(0.0)
     }
 
     /// Computes the upper bound rank estimate with the specified confidence level.
@@ -665,7 +665,7 @@ where
         let fixed = Self::FIXED_RSE_FACTOR / k as f64;
         let ub_rel = rank + num_std_dev as f64 * relative;
         let ub_fix = rank + num_std_dev as f64 * fixed;
-        ub_rel.min(ub_fix)
+        ub_rel.max(ub_fix).min(1.0)
     }
 
     /// Determines if a rank should be considered exact based on the exact rank threshold.
