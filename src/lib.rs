@@ -343,28 +343,6 @@ where
         self.rank(item, SearchCriteria::Inclusive)
     }
 
-    /// Returns the approximate rank using direct compactor weight computation.
-    ///
-    /// # Arguments
-    /// * `item` - The item to find the rank for
-    /// * `criteria` - Whether to include the item's weight in the rank calculation
-    ///
-    /// # Returns
-    /// A value in [0.0, 1.0] representing the approximate normalized rank.
-    pub fn rank_direct(&mut self, item: &T, criteria: SearchCriteria) -> Result<f64> {
-        if self.is_empty() {
-            return Err(ReqError::EmptySketch);
-        }
-
-        let inclusive = matches!(criteria, SearchCriteria::Inclusive);
-        let mut total_weight = 0u64;
-
-        for compactor in &mut self.compactors {
-            total_weight += compactor.compute_weight(item, inclusive);
-        }
-
-        Ok(total_weight as f64 / self.total_n as f64)
-    }
 
     /// Returns the approximate quantile for the given normalized rank.
     ///
@@ -571,7 +549,7 @@ where
 
     // Debug method to inspect compactor state
     #[cfg(test)]
-    pub fn debug_compactor_info(&self) -> Vec<(u8, u32, u32)> {
+    pub(crate) fn debug_compactor_info(&self) -> Vec<(u8, u32, u32)> {
         self.compactors.iter().map(|c| (c.lg_weight(), c.num_items(), c.nominal_capacity())).collect()
     }
 
@@ -610,8 +588,12 @@ where
     /// Returns a public accessor to the sorted view for testing.
     #[doc(hidden)]
     pub fn test_get_sorted_view(&mut self) -> Result<&SortedView<T>> {
-        self.get_sorted_view()
+        self.sorted_view()
     }
+
+
+
+
 
 
     /// Returns the lower bound for the rank of a given quantile at the specified confidence level.
