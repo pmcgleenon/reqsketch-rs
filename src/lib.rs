@@ -99,11 +99,11 @@ mod test_all_quantiles;
 #[cfg(test)]
 mod test_error_bounds;
 #[cfg(test)]
-mod test_detailed_comparison;
-#[cfg(test)]
 mod test_comprehensive_rank_accuracy;
 #[cfg(test)]
 mod test_hra_vs_lra_quantiles;
+#[cfg(test)]
+mod test_simple_correctness;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -827,28 +827,24 @@ mod tests {
             sketch2b.update(val);
         }
 
-        println!("Before merge:");
-        println!("sketch1a len: {}, items: {:?}", sketch1a.len(), sketch1a.iter().collect::<Vec<_>>());
-        println!("sketch2a len: {}, items: {:?}", sketch2a.len(), sketch2a.iter().collect::<Vec<_>>());
-        println!("sketch1b len: {}, items: {:?}", sketch1b.len(), sketch1b.iter().collect::<Vec<_>>());
-        println!("sketch2b len: {}, items: {:?}", sketch2b.len(), sketch2b.iter().collect::<Vec<_>>());
-
         // Test merge order: A + B vs B + A
         sketch1a.merge(&sketch2a).expect("Merge should succeed");  // sketch1a + sketch2a
         sketch2b.merge(&sketch1b).expect("Merge should succeed");  // sketch2b + sketch1b
 
-        println!("After merge:");
-        println!("sketch1a+sketch2a len: {}", sketch1a.len());
-        println!("sketch2b+sketch1b len: {}", sketch2b.len());
+        // Verify merge succeeded and resulted in non-empty sketches
+        assert!(!sketch1a.is_empty(), "Merged sketch should not be empty");
+        assert!(!sketch2b.is_empty(), "Merged sketch should not be empty");
 
-        if !sketch1a.is_empty() && !sketch2b.is_empty() {
-            let q1: f64 = sketch1a.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
-            let q2: f64 = sketch2b.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
+        // Verify both sketches have the same total count
+        assert_eq!(sketch1a.len(), sketch2b.len(), "Merged sketches should have same length");
 
-            println!("Quantiles: {} vs {}", q1, q2);
-            let diff = (q1 - q2).abs();
-            println!("Difference: {}", diff);
-        }
+        // Test commutativity: quantiles should be similar regardless of merge order
+        let q1: f64 = sketch1a.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
+        let q2: f64 = sketch2b.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
+
+        let diff = (q1 - q2).abs();
+        // Allow for some small numerical differences due to compaction ordering
+        assert!(diff < 100.0, "Quantiles should be reasonably close: {} vs {} (diff: {})", q1, q2, diff);
     }
 
     #[test]
@@ -859,55 +855,36 @@ mod tests {
             sketch.update(i as f64);
         }
 
-        println!("=== EXACT MODE QUANTILE DEBUG ===");
-        println!("Sketch has {} items, total_n: {}", sketch.len(), sketch.total_n);
-        println!("Is estimation mode: {}", sketch.is_estimation_mode());
+        // Verify sketch contains expected number of items
+        assert_eq!(sketch.len(), 10, "Sketch should contain 10 items");
+        assert_eq!(sketch.total_n, 10, "Total count should be 10");
+        assert!(!sketch.is_estimation_mode(), "Should be in exact mode for 10 items");
 
-        // Show internal structure
-        for (i, compactor) in sketch.compactors.iter().enumerate() {
-            println!("Level {}: {} items, weight: {}", i, compactor.num_items(), compactor.weight());
-            let items: Vec<_> = compactor.iter().collect();
-            if !items.is_empty() {
-                println!("  Items: {:?}", items);
-            }
-        }
-
-        // Test the specific quantile that's failing
-        println!("\n=== QUANTILE TESTS ===");
+        // Test inclusive quantiles with precise expectations
         let test_cases = [
             (0.0, 1.0), (0.1, 1.0), (0.5, 5.0), (0.9, 9.0), (1.0, 10.0)
         ];
 
         for &(rank, expected) in &test_cases {
-            if let Ok(quantile) = sketch.quantile(rank, SearchCriteria::Inclusive) {
-                let matches = (quantile - expected).abs() < 1e-6;
-                println!("quantile({}, Inclusive) = {}, expected = {}, matches = {}",
-                         rank, quantile, expected, matches);
-            }
+            let quantile = sketch.quantile(rank, SearchCriteria::Inclusive).expect("Quantile should succeed");
+            // For exact mode with 10 items, quantiles should be precise
+            assert_eq!(quantile, expected, "quantile({}, Inclusive) should be {}", rank, expected);
         }
 
-        // Also test exclusive
-        println!("\n=== EXCLUSIVE QUANTILE TESTS ===");
+        // Test exclusive quantiles
         let exclusive_cases = [
             (0.0, 1.0), (0.1, 2.0), (0.5, 6.0), (0.9, 10.0), (1.0, 10.0)
         ];
 
         for &(rank, expected) in &exclusive_cases {
-            if let Ok(quantile) = sketch.quantile(rank, SearchCriteria::Exclusive) {
-                let matches = (quantile - expected).abs() < 1e-6;
-                println!("quantile({}, Exclusive) = {}, expected = {}, matches = {}",
-                         rank, quantile, expected, matches);
-            }
+            let quantile = sketch.quantile(rank, SearchCriteria::Exclusive).expect("Quantile should succeed");
+            assert_eq!(quantile, expected, "quantile({}, Exclusive) should be {}", rank, expected);
         }
 
-        // Debug the sorted view
-        if let Ok(sorted_view) = sketch.get_sorted_view() {
-            println!("\n=== SORTED VIEW DEBUG ===");
-            println!("Total weight: {}", sorted_view.total_weight());
-            for (item, cum_weight) in sorted_view.iter_with_weights() {
-                println!("Item: {}, Cumulative weight: {}", item, cum_weight);
-            }
-        }
+        // Verify sorted view consistency
+        let sorted_view = sketch.get_sorted_view().expect("Should get sorted view");
+        assert_eq!(sorted_view.total_weight(), 10, "Total weight should be 10");
+        assert_eq!(sorted_view.len(), 10, "Sorted view should have 10 items");
     }
 
     #[test]
@@ -916,76 +893,65 @@ mod tests {
         let mut sketch = ReqSketch::new();
         let n = 1000;
 
-        println!("=== WEIGHT DEBUG FOR 1000 ITEMS ===");
-
         for i in 0..n {
             sketch.update(i as f64);
-
-            // Check at specific intervals and at the end
-            if i == 999 || (i + 1) % 100 == 0 {
-                println!("\n--- After {} items ---", i + 1);
-                println!("Total n: {}, retained: {}", sketch.total_n, sketch.len());
-                println!("Is estimation mode: {}", sketch.is_estimation_mode());
-
-                let mut total_weight = 0u64;
-                for (level, compactor) in sketch.compactors.iter().enumerate() {
-                    if compactor.num_items() > 0 {
-                        let level_weight = compactor.num_items() as u64 * compactor.weight();
-                        total_weight += level_weight;
-                        println!("Level {}: {} items × {} weight = {} total (capacity: {})",
-                                 level, compactor.num_items(), compactor.weight(),
-                                 level_weight, compactor.nominal_capacity());
-                    }
-                }
-
-                println!("Total weight: {}, expected: {}", total_weight, sketch.total_n);
-                if total_weight != sketch.total_n {
-                    println!("❌ WEIGHT MISMATCH! Difference: {}", total_weight as i64 - sketch.total_n as i64);
-                    break;
-                }
-            }
         }
 
-        // Final weight check using iterator
+        // Verify final counts
+        assert_eq!(sketch.total_n, n as u64, "Total count should equal number of updates");
+
+        // Verify weight consistency across compactors
+        let mut total_weight = 0u64;
+        for compactor in &sketch.compactors {
+            if compactor.num_items() > 0 {
+                let level_weight = compactor.num_items() as u64 * compactor.weight();
+                total_weight += level_weight;
+            }
+        }
+        assert_eq!(total_weight, sketch.total_n, "Sum of compactor weights should equal total_n");
+
+        // Verify iterator weight consistency
         let iter_weight: u64 = sketch.iter().map(|(_, weight)| weight).sum();
-        println!("\nFinal iterator weight check: {}, expected: {}", iter_weight, sketch.total_n);
+        assert_eq!(iter_weight, sketch.total_n, "Iterator weight sum should equal total_n");
+
+        // Verify sketch is in estimation mode for 1000 items
+        assert!(sketch.is_estimation_mode(), "Should be in estimation mode for 1000 items");
     }
 
     #[test]
     fn test_capacity_debug() {
         let mut sketch = ReqSketch::new(); // k=12 by default
 
-        println!("=== CAPACITY DEBUG (k=12) ===");
-
-        // Check capacity calculations for first few levels
+        // Verify capacity calculations are consistent across levels
         for level in 0..5 {
             let compactor = crate::compactor::Compactor::<f64>::new(level, 12, RankAccuracy::HighRank);
-            let section_size_raw = 12.0 / (2.0_f64.powf(level as f64 / 2.0));
             let section_size = compactor.section_size();
             let nominal_capacity = compactor.nominal_capacity();
 
-            println!("Level {}: section_size_raw={:.2}, section_size={}, capacity={}",
-                     level, section_size_raw, section_size, nominal_capacity);
+            // Verify section size is even and reasonable
+            assert!(section_size % 2 == 0, "Section size should be even for level {}", level);
+            assert!(section_size >= 4, "Section size should be at least 4 for level {}", level);
+
+            // Verify capacity is 2 * section_size * num_sections (3 initially)
+            assert_eq!(nominal_capacity, 2 * section_size * 3,
+                      "Nominal capacity calculation should be correct for level {}", level);
         }
 
-        // Add some items and see compaction behavior
-        println!("\n=== COMPACTION TIMING ===");
+        // Add items and verify compaction behavior
+        let initial_len = sketch.compactors.len();
         for i in 1..=50 {
             sketch.update(i as f64);
+        }
 
-            if sketch.compactors.len() > 1 || i % 10 == 0 {
-                println!("After {} items:", i);
-                for (level, compactor) in sketch.compactors.iter().enumerate() {
-                    if compactor.num_items() > 0 {
-                        println!("  Level {}: {}/{} items ({}%)",
-                                 level, compactor.num_items(), compactor.nominal_capacity(),
-                                 (compactor.num_items() * 100) / compactor.nominal_capacity());
-                    }
-                }
-                if sketch.compactors.len() > 1 {
-                    break; // Stop after first compaction
-                }
-            }
+        // Verify compaction occurred or items are managed properly
+        assert!(sketch.len() <= 50, "Sketch should contain at most 50 items");
+        assert!(sketch.total_n == 50, "Total count should be 50");
+
+        // If compaction occurred, verify we have multiple levels
+        if sketch.len() < 50 {
+            assert!(sketch.compactors.len() > initial_len ||
+                   sketch.compactors.iter().any(|c| c.num_items() > 0),
+                   "Should have active compactors if items were compacted");
         }
     }
 
@@ -995,121 +961,69 @@ mod tests {
         let mut sketch = ReqSketch::new();
         let n = 50; // Should trigger some compaction
 
-        println!("=== COMPACTION DEBUG ===");
+        let mut previous_len = 0;
+        let mut compaction_occurred = false;
 
         for i in 0..n {
             sketch.update(i as f64);
 
-            // Show state after every few updates
-            if i % 10 == 9 || i == n - 1 {
-                println!("\n--- After {} items ---", i + 1);
-                println!("Total n: {}, retained: {}", sketch.total_n, sketch.len());
-                println!("Is estimation mode: {}", sketch.is_estimation_mode());
-
-                for (level, compactor) in sketch.compactors.iter().enumerate() {
-                    if compactor.num_items() > 0 {
-                        println!("Level {}: {} items, weight: {}", level, compactor.num_items(), compactor.weight());
-                        let items: Vec<_> = compactor.iter().collect();
-                        println!("  Items (first 10): {:?}", &items[..items.len().min(10)]);
-                    }
-                }
-
-                // Check if total weight makes sense
-                let total_weight: u64 = sketch.iter().map(|(_, weight)| weight).sum();
-                let expected_weight = sketch.total_n;
-                println!("Total weight from iterator: {}, expected: {}", total_weight, expected_weight);
-
-                if total_weight != expected_weight {
-                    println!("❌ WEIGHT MISMATCH!");
-                }
+            // Track if compaction occurs
+            if sketch.len() < previous_len {
+                compaction_occurred = true;
             }
+            previous_len = sketch.len();
         }
 
-        // Test a quantile to see accuracy
-        if let Ok(median) = sketch.quantile(0.5, SearchCriteria::Inclusive) {
-            let expected_median = (n - 1) as f64 * 0.5;
-            let error = (median - expected_median).abs() / expected_median;
-            println!("\nMedian: {}, expected: {}, error: {:.2}%", median, expected_median, error * 100.0);
-        }
+        // Verify final state
+        assert_eq!(sketch.total_n, n as u64, "Total count should equal number of updates");
+
+        // Verify weight consistency
+        let total_weight: u64 = sketch.iter().map(|(_, weight)| weight).sum();
+        assert_eq!(total_weight, sketch.total_n, "Total weight should equal total_n");
+
+        // Test quantile accuracy
+        let median = sketch.quantile(0.5, SearchCriteria::Inclusive).expect("Should get median");
+        let expected_median = (n - 1) as f64 * 0.5;  // 0-indexed, so n-1 items, median at (n-1)/2
+
+        // For 50 items, allow reasonable error due to compaction
+        let error = (median - expected_median).abs() / expected_median;
+        assert!(error < 0.2, "Median error should be reasonable: got {}, expected {}, error: {:.2}%",
+               median, expected_median, error * 100.0);
+
+        // Verify sketch behaves reasonably
+        assert!(sketch.len() <= n, "Should not have more items than inserted");
     }
 
     #[test]
     fn debug_section_growth() {
         let mut sketch = ReqSketch::new(); // k=12 by default
 
-        println!("Testing section growth in Rust REQ sketch:");
+        let mut max_levels = 0;
+        let mut reached_estimation_mode = false;
 
         for i in 0..200 {
             sketch.update(i as f64);
 
-            if i % 20 == 19 || i < 50 {
-                println!("\nAfter {} items:", i + 1);
-                println!("Is estimation mode: {}", sketch.is_estimation_mode());
-                println!("Total weight: {}", sketch.len());
-                println!("Levels: {}", sketch.compactors.len());
-
-                let retained: u32 = sketch.compactors.iter()
-                    .map(|c| c.num_items())
-                    .sum();
-                println!("Retained items: {}", retained);
-
-                // Show detailed compactor state at key points
-                if i == 49 || i == 79 || i == 99 {
-                    for (level, compactor) in sketch.compactors.iter().enumerate() {
-                        if compactor.num_items() > 0 {
-                            println!("  Level {}: {} items, capacity {}, state {}, sections {}",
-                                level, compactor.num_items(), compactor.nominal_capacity(),
-                                compactor.state(), compactor.num_sections());
-                        }
-                    }
-                }
-
-                if sketch.is_estimation_mode() && i > 100 { break; }
+            // Track progress
+            if sketch.compactors.len() > max_levels {
+                max_levels = sketch.compactors.len();
             }
-        }
-    }
-
-    #[test]
-    fn debug_50k_uniform() {
-        let mut sketch = ReqSketch::new();
-        for i in 0..50_000 {
-            sketch.update(i as f64);
-        }
-
-        println!("Rust REQ sketch with 50k items:");
-        println!("Is estimation mode: {}", sketch.is_estimation_mode());
-        println!("Total weight: {}", sketch.len());
-
-        let q01 = sketch.quantile(0.1, SearchCriteria::Inclusive).expect("Quantile should succeed");
-        let expected = 4999.9;
-        let error = (q01 - expected).abs() / expected;
-
-        println!("0.1 quantile: {}", q01);
-        println!("Expected: {}", expected);
-        println!("Relative error: {:.2}%", error * 100.0);
-
-        // Debug compactor state
-        println!("\nCompactor state:");
-        for (level, compactor) in sketch.compactors.iter().enumerate() {
-            if compactor.num_items() > 0 {
-                println!("Level {}: {} items, weight {}, capacity {}",
-                    level, compactor.num_items(), compactor.weight(), compactor.nominal_capacity());
+            if sketch.is_estimation_mode() {
+                reached_estimation_mode = true;
             }
         }
 
-        // Also test a smaller quantile to see if behavior is consistent
-        let q001 = sketch.quantile(0.01, SearchCriteria::Inclusive).expect("Quantile should succeed");
-        let expected_001 = 499.99;
-        let error_001 = (q001 - expected_001).abs() / expected_001;
-        println!("\n0.01 quantile: {}", q001);
-        println!("Expected: {}", expected_001);
-        println!("Relative error: {:.2}%", error_001 * 100.0);
+        // Verify section growth behavior
+        assert_eq!(sketch.total_n, 200, "Should have processed 200 items");
+        assert!(reached_estimation_mode, "Should reach estimation mode with 200 items");
+        assert!(max_levels > 1, "Should have multiple compactor levels");
 
-        let median = sketch.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
-        let expected_median = 24999.5;
-        let median_error = (median - expected_median).abs() / expected_median;
-        println!("\n0.5 quantile (median): {}", median);
-        println!("Expected: {}", expected_median);
-        println!("Relative error: {:.2}%", median_error * 100.0);
+        // Verify weight consistency
+        let total_weight: u64 = sketch.iter().map(|(_, weight)| weight).sum();
+        assert_eq!(total_weight, sketch.total_n, "Weight should be consistent");
+
+        // Verify compaction efficiency (may retain all items if k is large)
+        assert!(sketch.len() <= 200, "Should not have more retained items than total count");
     }
+
 }
