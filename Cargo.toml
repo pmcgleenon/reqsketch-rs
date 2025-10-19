@@ -2,12 +2,12 @@
 name = "reqsketch"
 version = "0.1.0"
 edition = "2021"
-description = "Relative Error Quantiles sketch implementation in Rust"
-license = "Apache-2.0"
+description = "Relative Error Quantiles sketch"
+license = "MIT OR Apache-2.0"
 authors = ["Patrick McGleenon"]
 readme = "README.md"
 repository = "https://github.com/pmcgleenon/reqsketch-rs"
-keywords = ["sketch", "quantiles", "streaming", "statistics", "approximation"]
+keywords = [ "req", "sketch", "quantiles", "streaming", "statistics", "approximation"]
 categories = ["algorithms", "data-structures"]
 
 [lib]
