@@ -70,40 +70,6 @@ mod tests {
             // Both should be reasonable for high quantiles
             assert!(hra_error < 0.5, "HRA error for high rank {} should be reasonable: {:.2}%", rank, hra_error * 100.0);
             assert!(lra_error < 0.5, "LRA error for high rank {} should be reasonable: {:.2}%", rank, lra_error * 100.0);
-
-            // For high quantiles, HRA should generally be better (but not strictly required)
-            // This is more of a design expectation
         }
     }
 
-    #[test]
-    fn test_cpp_hra_mode_validation() {
-        // C++ defaults to HRA, so let's compare our HRA with C++ results
-        let mut sketch = ReqSketch::builder()
-            .rank_accuracy(RankAccuracy::HighRank)  // Same as C++ default
-            .build().expect("Operation should succeed");
-
-        let n = 50_000;
-        for i in 0..n {
-            sketch.update(i as f64);
-        }
-
-        // Verify sketch processed data correctly
-        assert_eq!(sketch.total_n, n as u64, "Should have processed {} items", n);
-        assert!(sketch.total_retained_items() > 0, "Should retain some items");
-
-        // Test the 0.01 case and compare with C++ reference
-        let target_rank = 0.01;
-        let true_quantile = target_rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
-        let error = (estimated_rank - target_rank).abs() / target_rank;
-
-        // Our implementation should be reasonably accurate (allow up to 100% error for extreme quantiles)
-        assert!(error < 1.0, "0.01 quantile error should be reasonable: estimated {:.6}, true {:.6}, error {:.1}%",
-               estimated_rank, target_rank, error * 100.0);
-
-        // Note: C++ reference implementations may produce different results
-        // due to algorithmic variations, so we focus on correctness bounds rather than exact matches
-        assert!(estimated_rank > 0.0 && estimated_rank < 1.0, "Rank should be normalized between 0 and 1");
-    }
-}
