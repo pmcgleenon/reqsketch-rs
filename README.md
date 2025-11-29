@@ -62,6 +62,25 @@ for i in 0..1000 {
 sketch1.merge(&sketch2)?;
 ```
 
+### REQ Rank Error Analysis
+
+Generate DataSketches-style rank error plots:
+
+```bash
+# Generate HRA and LRA rank error plots
+cargo run --example req_rank_error --release
+
+# Creates: assets/req_rank_error_hra.png, assets/req_rank_error_lra.png
+```
+
+These plots demonstrate the key REQ characteristic: error tapering toward the optimized tail (rank 1.0 for HRA, rank 0.0 for LRA), with confidence bands showing error distribution across randomized trials.
+
+**High Rank Accuracy (HRA) Mode:**
+![REQ Rank Error - HighRank](assets/req_rank_error_hra.png)
+
+**Low Rank Accuracy (LRA) Mode:**
+![REQ Rank Error - LowRank](assets/req_rank_error_lra.png)
+
 ## Examples
 
 Run the examples to see the sketch in action:
