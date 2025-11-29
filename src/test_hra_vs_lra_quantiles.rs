@@ -72,4 +72,4 @@ mod tests {
             assert!(lra_error < 0.5, "LRA error for high rank {} should be reasonable: {:.2}%", rank, lra_error * 100.0);
         }
     }
-
+}
