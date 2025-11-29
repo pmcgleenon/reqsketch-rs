@@ -54,7 +54,7 @@ fn test_3_sigma_compliance() {
 
         // Error should be reasonable (less than 50% for most quantiles)
         let error_pct = (estimated_rank - rank).abs() / rank * 100.0;
-        if rank >= 0.1 && rank <= 0.9 {
+        if (0.1..=0.9).contains(&rank) {
             assert!(error_pct < 50.0,
                 "Excessive error for rank {}: {:.2}%", rank, error_pct);
         }
@@ -106,9 +106,9 @@ fn test_bounds_consistency() {
         for sigma in 1..=3 {
             let lower = sketch.get_rank_lower_bound(rank, sigma);
             let upper = sketch.get_rank_upper_bound(rank, sigma);
-            assert!(lower >= 0.0 && lower <= 1.0,
+            assert!((0.0..=1.0).contains(&lower),
                 "{}-sigma lower bound out of range for rank {}: {}", sigma, rank, lower);
-            assert!(upper >= 0.0 && upper <= 1.0,
+            assert!((0.0..=1.0).contains(&upper),
                 "{}-sigma upper bound out of range for rank {}: {}", sigma, rank, upper);
         }
     }

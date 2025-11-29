@@ -3,7 +3,7 @@ mod tests {
     use crate::*;
 
     #[test]
-    fn test_theoretical_error_bounds() {
+    fn test_theoretical_error_bounds() -> Result<()> {
         let mut sketch = ReqSketch::new();
         let n = 50_000;
 
@@ -28,7 +28,7 @@ mod tests {
         for &rank in &test_ranks {
             // Test 1: For a known quantile, check if our rank estimate is within bounds
             let true_quantile = rank * (n - 1) as f64;
-            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
+            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive)?;
 
             // Get theoretical error bounds at 3 standard deviations (99.7% confidence)
             let lower_bound = sketch.get_rank_lower_bound(rank, 3);
@@ -57,10 +57,11 @@ mod tests {
         }
 
         println!("\n✓ All quantile estimates are within 3-sigma bounds as required");
+        Ok(())
     }
 
     #[test]
-    fn test_error_bounds_across_k_values() {
+    fn test_error_bounds_across_k_values() -> Result<()> {
         println!("=== Error Bounds vs K Parameter ===");
         println!("Comparing theoretical accuracy for different k values");
         println!("");
@@ -72,7 +73,7 @@ mod tests {
         println!("-\t--------\t--------\t--------");
 
         for &k in &k_values {
-            let mut sketch = ReqSketch::builder().k(k).expect("Operation should succeed").build().expect("Operation should succeed");
+            let mut sketch = ReqSketch::builder().k(k)?.build()?;
 
             // Add enough data to trigger estimation mode
             for i in 0..10000 {
@@ -91,10 +92,11 @@ mod tests {
         }
 
         println!("\n✓ Error bounds decrease as k increases, as expected");
+        Ok(())
     }
 
     #[test]
-    fn test_hra_vs_lra_error_bounds() {
+    fn test_hra_vs_lra_error_bounds() -> Result<()> {
         println!("=== HRA vs LRA Error Bounds Comparison ===");
         println!("High Rank Accuracy should have better bounds for high ranks");
         println!("Low Rank Accuracy should have better bounds for low ranks");
@@ -108,10 +110,10 @@ mod tests {
         for &rank in &test_ranks {
             let mut hra_sketch = ReqSketch::builder()
                 .rank_accuracy(RankAccuracy::HighRank)
-                .build().expect("Operation should succeed");
+                .build()?;
             let mut lra_sketch = ReqSketch::builder()
                 .rank_accuracy(RankAccuracy::LowRank)
-                .build().expect("Operation should succeed");
+                .build()?;
 
             // Add data to both sketches
             for i in 0..10000 {
@@ -143,10 +145,11 @@ mod tests {
         }
 
         println!("\n✓ HRA and LRA modes show expected accuracy patterns");
+        Ok(())
     }
 
     #[test]
-    fn test_exact_mode_error_bounds() {
+    fn test_exact_mode_error_bounds() -> Result<()> {
         println!("=== Exact Mode Error Bounds ===");
         println!("Small sketches should have exact bounds (0% error)");
         println!("");
@@ -174,5 +177,6 @@ mod tests {
         }
 
         println!("\n✓ Exact mode provides tight error bounds as expected");
+        Ok(())
     }
 }

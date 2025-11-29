@@ -111,7 +111,7 @@ where
 
 /// Validates the k parameter.
 pub(crate) fn validate_k(k: u16) -> Result<()> {
-    if k < 4 || k % 2 != 0 {
+    if k < 4 || !k.is_multiple_of(2) {
         Err(ReqError::InvalidK(k))
     } else {
         Ok(())
@@ -145,16 +145,15 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_fluent_interface() {
+    fn test_builder_fluent_interface() -> Result<()> {
         let sketch = ReqSketchBuilder::<i32>::new()
-            .k(16)
-            .expect("Valid k value")
+            .k(16)?
             .rank_accuracy(RankAccuracy::LowRank)
-            .build()
-            .expect("Builder should succeed");
+            .build()?;
 
         assert_eq!(sketch.k(), 16);
         assert_eq!(sketch.rank_accuracy(), RankAccuracy::LowRank);
+        Ok(())
     }
 
     #[test]

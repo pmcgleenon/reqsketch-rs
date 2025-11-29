@@ -327,7 +327,7 @@ mod statistical_tests {
         for value in test_values {
             let rank = sketch.rank(&value, SearchCriteria::Inclusive).expect("Operation should succeed");
             assert!(rank >= last_rank, "Ranks should be monotonic");
-            assert!(rank >= 0.0 && rank <= 1.0, "Ranks should be in [0,1]");
+            assert!((0.0..=1.0).contains(&rank), "Ranks should be in [0,1]");
             last_rank = rank;
         }
     }
@@ -532,7 +532,7 @@ mod property_tests {
                 for &value in &test_values {
                     let rank = sketch.rank(&value, SearchCriteria::Inclusive).expect("Operation should succeed");
                     assert!(rank >= last_rank, "Ranks not monotonic: {} after {}", rank, last_rank);
-                    assert!(rank >= 0.0 && rank <= 1.0, "Rank {} out of bounds", rank);
+                    assert!((0.0..=1.0).contains(&rank), "Rank {} out of bounds", rank);
                     last_rank = rank;
                 }
             }

@@ -1,7 +1,6 @@
 /// Critical algorithmic correctness tests based on C++ reference validation
 /// These tests ensure our implementation matches the theoretical and practical behavior
 /// of the reference implementation.
-
 use reqsketch::*;
 
 #[cfg(test)]
@@ -89,7 +88,7 @@ mod global_capacity_tests {
             "All recorded compaction events should report positive capacity");
 
         // Verify compaction only happens when approaching capacity limits
-        for (step, before, after, capacity) in compaction_events {
+        for (step, before, _after, capacity) in compaction_events {
             let utilization = before as f32 / capacity as f32;
                  // Compaction can occur when approaching capacity limits. Verified below.
                  assert!(utilization >= 0.5, // More lenient threshold
@@ -225,7 +224,7 @@ mod internal_state_consistency_tests {
 
             // Verify total weight conservation
             let computed_weight = sketch.computed_total_weight();
-            assert_eq!(computed_weight, sketch.len() as u64,
+            assert_eq!(computed_weight, sketch.len(),
                       "Weight conservation violated: computed={}, actual={}",
                       computed_weight, sketch.len());
         }
@@ -272,7 +271,7 @@ mod internal_state_consistency_tests {
         sketch1.merge(&sketch2).expect("Operation should succeed");
 
         // Verify total weight conservation
-        assert_eq!(sketch1.len(), total_items_before as u64,
+        assert_eq!(sketch1.len(), total_items_before,
                   "Merge should conserve total weight: expected {}, got {}",
                   total_items_before, sketch1.len());
 

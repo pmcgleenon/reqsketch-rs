@@ -306,60 +306,63 @@ mod tests {
     }
 
     #[test]
-    fn test_rank_queries() {
+    fn test_rank_queries() -> Result<()> {
         let view = create_test_view();
 
         // Test exact matches
-        assert!((view.rank_no_interpolation(&1, SearchCriteria::Inclusive).expect("Rank should succeed") - 0.2).abs() < 1e-10);
-        assert!((view.rank_no_interpolation(&1, SearchCriteria::Exclusive).expect("Rank should succeed") - 0.0).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&1, SearchCriteria::Inclusive)? - 0.2).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&1, SearchCriteria::Exclusive)? - 0.0).abs() < 1e-10);
 
         // Test values between items
-        assert!((view.rank_no_interpolation(&2, SearchCriteria::Inclusive).expect("Rank should succeed") - 0.2).abs() < 1e-10);
-        assert!((view.rank_no_interpolation(&6, SearchCriteria::Inclusive).expect("Rank should succeed") - 0.6).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&2, SearchCriteria::Inclusive)? - 0.2).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&6, SearchCriteria::Inclusive)? - 0.6).abs() < 1e-10);
 
         // Test edge cases
-        assert!((view.rank_no_interpolation(&0, SearchCriteria::Inclusive).expect("Rank should succeed") - 0.0).abs() < 1e-10);
-        assert!((view.rank_no_interpolation(&10, SearchCriteria::Inclusive).expect("Rank should succeed") - 1.0).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&0, SearchCriteria::Inclusive)? - 0.0).abs() < 1e-10);
+        assert!((view.rank_no_interpolation(&10, SearchCriteria::Inclusive)? - 1.0).abs() < 1e-10);
+        Ok(())
     }
 
     #[test]
-    fn test_quantile_queries() {
+    fn test_quantile_queries() -> Result<()> {
         let view = create_test_view();
 
         // Test edge cases
-        assert_eq!(view.quantile(0.0, SearchCriteria::Inclusive).expect("Quantile should succeed"), 1);
-        assert_eq!(view.quantile(1.0, SearchCriteria::Inclusive).expect("Quantile should succeed"), 9);
+        assert_eq!(view.quantile(0.0, SearchCriteria::Inclusive)?, 1);
+        assert_eq!(view.quantile(1.0, SearchCriteria::Inclusive)?, 9);
 
         // Test middle values
-        let median = view.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
-        assert!(median >= 3 && median <= 7); // Should be around the middle (values are 1,3,5,7,9)
+        let median = view.quantile(0.5, SearchCriteria::Inclusive)?;
+        assert!((3..=7).contains(&median)); // Should be around the middle (values are 1,3,5,7,9)
 
         // Test various ranks
-        let q25 = view.quantile(0.25, SearchCriteria::Inclusive).expect("Quantile should succeed");
-        let q75 = view.quantile(0.75, SearchCriteria::Inclusive).expect("Quantile should succeed");
+        let q25 = view.quantile(0.25, SearchCriteria::Inclusive)?;
+        let q75 = view.quantile(0.75, SearchCriteria::Inclusive)?;
         assert!(q25 <= median);
         assert!(median <= q75);
+        Ok(())
     }
 
     #[test]
-    fn test_pmf() {
+    fn test_pmf() -> Result<()> {
         let view = create_test_view();
         let split_points = vec![3, 7];
 
-        let pmf = view.pmf(&split_points, SearchCriteria::Inclusive).expect("PMF should succeed");
+        let pmf = view.pmf(&split_points, SearchCriteria::Inclusive)?;
         assert_eq!(pmf.len(), 3); // 2 split points create 3 intervals
 
         // Sum should be approximately 1.0
         let sum: f64 = pmf.iter().sum();
         assert!((sum - 1.0).abs() < 1e-10);
+        Ok(())
     }
 
     #[test]
-    fn test_cdf() {
+    fn test_cdf() -> Result<()> {
         let view = create_test_view();
         let split_points = vec![3, 7];
 
-        let cdf = view.cdf(&split_points, SearchCriteria::Inclusive).expect("CDF should succeed");
+        let cdf = view.cdf(&split_points, SearchCriteria::Inclusive)?;
         assert_eq!(cdf.len(), 3);
 
         // CDF should be monotonically increasing
@@ -369,6 +372,7 @@ mod tests {
 
         // Last value should be 1.0
         assert!((cdf[cdf.len() - 1] - 1.0).abs() < 1e-10);
+        Ok(())
     }
 
     #[test]

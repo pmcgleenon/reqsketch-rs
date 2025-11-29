@@ -3,7 +3,7 @@ mod tests {
     use crate::*;
 
     #[test]
-    fn test_rank_space_error() {
+    fn test_rank_space_error() -> Result<()> {
         let mut sketch = ReqSketch::new(); // HRA mode
         let n = 50_000;
 
@@ -19,10 +19,8 @@ mod tests {
         let test_ranks = [0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99];
 
         for &rank in &test_ranks {
-            let q_est = sketch.quantile(rank, SearchCriteria::Inclusive)
-                .expect("Operation should succeed");
-            let est_rank = sketch.rank(&q_est, SearchCriteria::Inclusive)
-                .expect("Operation should succeed");
+            let q_est = sketch.quantile(rank, SearchCriteria::Inclusive)?;
+            let est_rank = sketch.rank(&q_est, SearchCriteria::Inclusive)?;
             let abs_rank_err = (est_rank - rank).abs();
 
             // HRA: tighter bounds for higher ranks where HRA should excel
@@ -40,5 +38,6 @@ mod tests {
         // Verify sketch structure
         assert!(sketch.len() <= n as u64, "Should not retain more items than inserted");
         assert!(sketch.compactors.len() > 0, "Should have at least one compactor");
+        Ok(())
     }
 }

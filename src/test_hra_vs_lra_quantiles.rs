@@ -3,17 +3,17 @@ mod tests {
     use crate::*;
 
     #[test]
-    fn test_hra_vs_lra_for_low_quantiles() {
+    fn test_hra_vs_lra_for_low_quantiles() -> Result<()> {
         let n = 50_000;
 
         // Test both modes
         let mut hra_sketch = ReqSketch::builder()
             .rank_accuracy(RankAccuracy::HighRank)
-            .build().expect("Operation should succeed");
+            .build()?;
 
         let mut lra_sketch = ReqSketch::builder()
             .rank_accuracy(RankAccuracy::LowRank)
-            .build().expect("Operation should succeed");
+            .build()?;
 
         // Add same data to both
         for i in 0..n {
@@ -37,8 +37,8 @@ mod tests {
         for &rank in &test_ranks {
             let true_quantile = rank * (n - 1) as f64;
 
-            let hra_rank = hra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
-            let lra_rank = lra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
+            let hra_rank = hra_sketch.rank(&true_quantile, SearchCriteria::Inclusive)?;
+            let lra_rank = lra_sketch.rank(&true_quantile, SearchCriteria::Inclusive)?;
 
             let hra_error = (hra_rank - rank).abs() / rank;
             let lra_error = (lra_rank - rank).abs() / rank;
@@ -61,8 +61,8 @@ mod tests {
         for &rank in &high_test_ranks {
             let true_quantile = rank * (n - 1) as f64;
 
-            let hra_rank = hra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
-            let lra_rank = lra_sketch.rank(&true_quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
+            let hra_rank = hra_sketch.rank(&true_quantile, SearchCriteria::Inclusive)?;
+            let lra_rank = lra_sketch.rank(&true_quantile, SearchCriteria::Inclusive)?;
 
             let hra_error = (hra_rank - rank).abs() / rank;
             let lra_error = (lra_rank - rank).abs() / rank;
@@ -71,5 +71,7 @@ mod tests {
             assert!(hra_error < 0.5, "HRA error for high rank {} should be reasonable: {:.2}%", rank, hra_error * 100.0);
             assert!(lra_error < 0.5, "LRA error for high rank {} should be reasonable: {:.2}%", rank, lra_error * 100.0);
         }
+        Ok(())
+    }
     }
 }

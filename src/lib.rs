@@ -415,7 +415,7 @@ where
     }
 
     /// Returns an iterator over the (item, weight) pairs in the sketch.
-    pub fn iter(&self) -> ReqSketchIterator<T> {
+    pub fn iter(&self) -> ReqSketchIterator<'_, T> {
         ReqSketchIterator::new(&self.compactors)
     }
 
@@ -682,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_and_basic_queries() {
+    fn test_update_and_basic_queries() -> Result<()> {
         let mut sketch = ReqSketch::new();
 
         // Add some values
@@ -694,23 +694,24 @@ mod tests {
         assert_eq!(sketch.len(), 100);
 
         // During compaction, some items may be discarded, so check ranges instead
-        let min = sketch.min_item().expect("Should have min item");
-        let max = sketch.max_item().expect("Should have max item");
+        let min = sketch.min_item().ok_or(ReqError::EmptySketch)?;
+        let max = sketch.max_item().ok_or(ReqError::EmptySketch)?;
         assert!(*min >= 0.0 && *min <= 10.0, "Min should be in reasonable range, got {}", min);
         assert!(*max >= 89.0 && *max <= 99.0, "Max should be in reasonable range, got {}", max);
+        Ok(())
     }
 
     #[test]
-    fn test_builder_pattern() {
+    fn test_builder_pattern() -> Result<()> {
         let sketch: Result<ReqSketch<i32>> = ReqSketch::builder()
-            .k(16)
-            .and_then(|builder| Ok(builder.rank_accuracy(RankAccuracy::LowRank)))
+            .k(16).map(|builder| builder.rank_accuracy(RankAccuracy::LowRank))
             .and_then(|builder| builder.build());
 
         assert!(sketch.is_ok());
-        let sketch = sketch.expect("Builder should succeed");
+        let sketch = sketch?;
         assert_eq!(sketch.k(), 16);
         assert_eq!(sketch.rank_accuracy(), RankAccuracy::LowRank);
+        Ok(())
     }
 
     #[test]
@@ -749,7 +750,7 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_commutativity_debug() {
+    fn test_merge_commutativity_debug() -> Result<()> {
         // Test the exact failing case: sketch with zeros + one with other values
         let mut sketch1a = ReqSketch::new();
         let mut sketch2a = ReqSketch::new();
@@ -777,8 +778,8 @@ mod tests {
         }
 
         // Test merge order: A + B vs B + A
-        sketch1a.merge(&sketch2a).expect("Merge should succeed");  // sketch1a + sketch2a
-        sketch2b.merge(&sketch1b).expect("Merge should succeed");  // sketch2b + sketch1b
+        sketch1a.merge(&sketch2a)?;  // sketch1a + sketch2a
+        sketch2b.merge(&sketch1b)?;  // sketch2b + sketch1b
 
         // Verify merge succeeded and resulted in non-empty sketches
         assert!(!sketch1a.is_empty(), "Merged sketch should not be empty");
@@ -788,16 +789,17 @@ mod tests {
         assert_eq!(sketch1a.len(), sketch2b.len(), "Merged sketches should have same length");
 
         // Test commutativity: quantiles should be similar regardless of merge order
-        let q1: f64 = sketch1a.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
-        let q2: f64 = sketch2b.quantile(0.5, SearchCriteria::Inclusive).expect("Quantile should succeed");
+        let q1: f64 = sketch1a.quantile(0.5, SearchCriteria::Inclusive)?;
+        let q2: f64 = sketch2b.quantile(0.5, SearchCriteria::Inclusive)?;
 
         let diff = (q1 - q2).abs();
         // Allow for some small numerical differences due to compaction ordering
         assert!(diff < 100.0, "Quantiles should be reasonably close: {} vs {} (diff: {})", q1, q2, diff);
+        Ok(())
     }
 
     #[test]
-    fn test_exact_quantile_debug() {
+    fn test_exact_quantile_debug() -> Result<()> {
         // Test the exact same scenario as C++ reference: [1,2,3,4,5,6,7,8,9,10]
         let mut sketch = ReqSketch::new();
         for i in 1..=10 {
@@ -815,7 +817,7 @@ mod tests {
         ];
 
         for &(rank, expected) in &test_cases {
-            let quantile = sketch.quantile(rank, SearchCriteria::Inclusive).expect("Quantile should succeed");
+            let quantile = sketch.quantile(rank, SearchCriteria::Inclusive)?;
             // For exact mode with 10 items, quantiles should be precise
             assert_eq!(quantile, expected, "quantile({}, Inclusive) should be {}", rank, expected);
         }
@@ -826,14 +828,15 @@ mod tests {
         ];
 
         for &(rank, expected) in &exclusive_cases {
-            let quantile = sketch.quantile(rank, SearchCriteria::Exclusive).expect("Quantile should succeed");
+            let quantile = sketch.quantile(rank, SearchCriteria::Exclusive)?;
             assert_eq!(quantile, expected, "quantile({}, Exclusive) should be {}", rank, expected);
         }
 
         // Verify sorted view consistency
-        let sorted_view = sketch.get_sorted_view().expect("Should get sorted view");
+        let sorted_view = sketch.get_sorted_view()?;
         assert_eq!(sorted_view.total_weight(), 10, "Total weight should be 10");
         assert_eq!(sorted_view.len(), 10, "Sorted view should have 10 items");
+        Ok(())
     }
 
     #[test]
@@ -878,7 +881,7 @@ mod tests {
             let nominal_capacity = compactor.nominal_capacity();
 
             // Verify section size is even and reasonable
-            assert!(section_size % 2 == 0, "Section size should be even for level {}", level);
+            assert!(section_size.is_multiple_of(2), "Section size should be even for level {}", level);
             assert!(section_size >= 4, "Section size should be at least 4 for level {}", level);
 
             // Verify capacity is 2 * section_size * num_sections (3 initially)
@@ -905,7 +908,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compaction_debug() {
+    fn test_compaction_debug() -> Result<()> {
         // Test with enough items to trigger compaction
         let mut sketch = ReqSketch::new();
         let n = 50; // Should trigger some compaction
@@ -922,14 +925,14 @@ mod tests {
         }
 
         // Verify final state
-        assert_eq!(sketch.total_n, n as u64, "Total count should equal number of updates");
+        assert_eq!(sketch.total_n, n, "Total count should equal number of updates");
 
         // Verify weight consistency
         let total_weight: u64 = sketch.iter().map(|(_, weight)| weight).sum();
         assert_eq!(total_weight, sketch.total_n, "Total weight should equal total_n");
 
         // Test quantile accuracy
-        let median = sketch.quantile(0.5, SearchCriteria::Inclusive).expect("Should get median");
+        let median = sketch.quantile(0.5, SearchCriteria::Inclusive)?;
         let expected_median = (n - 1) as f64 * 0.5;  // 0-indexed, so n-1 items, median at (n-1)/2
 
         // For 50 items, allow reasonable error due to compaction
@@ -939,6 +942,7 @@ mod tests {
 
         // Verify sketch behaves reasonably
         assert!(sketch.len() <= n, "Should not have more items than inserted");
+        Ok(())
     }
 
     #[test]
