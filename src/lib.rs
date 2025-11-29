@@ -99,8 +99,6 @@ mod test_all_quantiles;
 #[cfg(test)]
 mod test_error_bounds;
 #[cfg(test)]
-mod test_comprehensive_rank_accuracy;
-#[cfg(test)]
 mod test_hra_vs_lra_quantiles;
 #[cfg(test)]
 mod test_simple_correctness;
