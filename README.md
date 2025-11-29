@@ -89,6 +89,15 @@ Run the examples to see the sketch in action:
 cargo run --example basic_usage
 ```
 
+## Benchmarks
+
+Run performance benchmarks:
+
+```bash
+# Run all benchmarks
+cargo bench
+```
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.   

@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 authors = ["Patrick McGleenon"]
 readme = "README.md"
 repository = "https://github.com/pmcgleenon/reqsketch-rs"
+documentation = "https://docs.rs/reqsketch"
 keywords = [ "req", "sketch", "quantiles", "streaming", "statistics", "approximation"]
 categories = ["algorithms", "data-structures"]
 exclude = [".github"]
@@ -14,6 +15,10 @@ exclude = [".github"]
 [lib]
 name = "reqsketch"
 path = "src/lib.rs"
+
+[[bench]]
+name = "core_benchmarks"
+harness = false
 
 [dependencies]
 rand = "0.8"
