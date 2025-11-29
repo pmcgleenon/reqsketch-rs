@@ -67,7 +67,7 @@ sketch1.merge(&sketch2)?;
 Generate DataSketches-style rank error plots:
 
 ```bash
-# Generate HRA and LRA rank error plots
+# Generate HRA and LRA rank error plots:
 cargo run --example req_rank_error --release
 
 # Creates: assets/req_rank_error_hra.png, assets/req_rank_error_lra.png
