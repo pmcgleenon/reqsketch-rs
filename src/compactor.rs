@@ -312,13 +312,7 @@ where
 
         let (low, high) = match self.rank_accuracy {
             RankAccuracy::HighRank => {
-                // HRA: Protect small ranks by compacting HIGH sections (high values)
-                // This means we compact from [non_compact, num_items] (top end)
-                let low = non_compact.min(self.items.len());
-                (low, self.items.len())
-            }
-            RankAccuracy::LowRank => {
-                // LRA: Protect high ranks by compacting LOW sections (low values)
+                // HRA: Protect high ranks by compacting LOW sections (low values)
                 // This means we compact from [0, num_items - non_compact] (bottom end)
                 let high = if self.items.len() >= non_compact {
                     self.items.len() - non_compact
@@ -326,6 +320,12 @@ where
                     0
                 };
                 (0, high)
+            }
+            RankAccuracy::LowRank => {
+                // LRA: Protect low ranks by compacting HIGH sections (high values)
+                // This means we compact from [non_compact, num_items] (top end)
+                let low = non_compact.min(self.items.len());
+                (low, self.items.len())
             }
         };
 
