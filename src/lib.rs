@@ -222,8 +222,20 @@ where
 
     /// Updates the sketch with a new item.
     pub fn update(&mut self, item: T) {
-        // For allocation-free hotpath, skip min/max tracking in update
-        // They will be computed on-demand when queried
+        // Track exact min/max for DataSketches parity
+        // Update min
+        match &mut self.min_item {
+            None => self.min_item = Some(item.clone()),
+            Some(min) if item.total_cmp(min).is_lt() => *min = item.clone(),
+            _ => {}
+        }
+
+        // Update max
+        match &mut self.max_item {
+            None => self.max_item = Some(item.clone()),
+            Some(max) if item.total_cmp(max).is_gt() => *max = item.clone(),
+            _ => {}
+        }
 
         // Ensure we have at least one compactor
         if self.compactors.is_empty() {
@@ -303,22 +315,16 @@ where
         Ok(())
     }
 
-    /// Returns the minimum item seen, or None if empty.
-    /// Computed on-demand for allocation-free hotpath.
+    /// Returns the exact minimum item from the stream, or None if empty.
+    /// This is the true minimum value ever seen, not an approximation.
     pub fn min_item(&self) -> Option<&T> {
-        self.compactors
-            .iter()
-            .flat_map(|c| c.iter())
-            .min_by(|a, b| a.total_cmp(b))
+        self.min_item.as_ref()
     }
 
-    /// Returns the maximum item seen, or None if empty.
-    /// Computed on-demand for allocation-free hotpath.
+    /// Returns the exact maximum item from the stream, or None if empty.
+    /// This is the true maximum value ever seen, not an approximation.
     pub fn max_item(&self) -> Option<&T> {
-        self.compactors
-            .iter()
-            .flat_map(|c| c.iter())
-            .max_by(|a, b| a.total_cmp(b))
+        self.max_item.as_ref()
     }
 
     /// Returns the approximate rank of the given item.
