@@ -45,9 +45,6 @@ mod global_capacity_tests {
             if items > 0 {
                 let utilization = items as f32 / capacity as f32;
 
-                println!("Level {}: {}/{} items ({}x capacity)",
-                        level, items, capacity, utilization);
-
                 total_items += items;
                 total_capacity += capacity;
 
@@ -60,7 +57,8 @@ mod global_capacity_tests {
 
         // The key constraint with C++ strategy is global capacity management
         let global_utilization = total_items as f32 / total_capacity as f32;
-        println!("Global utilization: {}/{} = {}x", total_items, total_capacity, global_utilization);
+        // Ensure capacities are sensible to avoid divide-by-zero or unexpected state
+        assert!(total_capacity > 0, "Total nominal capacity must be positive");
 
         // Global utilization should be reasonable (allow some overhead for C++ strategy)
         assert!(global_utilization <= 1.5,
@@ -86,19 +84,17 @@ mod global_capacity_tests {
             }
         }
 
-        println!("Compaction events: {}", compaction_events.len());
+        // Ensure capacity values in recorded events are valid
+        assert!(compaction_events.iter().all(|&(_step, _before, _after, cap)| cap > 0),
+            "All recorded compaction events should report positive capacity");
 
         // Verify compaction only happens when approaching capacity limits
         for (step, before, after, capacity) in compaction_events {
             let utilization = before as f32 / capacity as f32;
-            println!("Compaction at step {}: {}->{} items ({}% capacity)",
-                    step, before, after, utilization * 100.0);
-
-            // Compaction can occur when approaching capacity limits
-            // Our implementation may compact earlier due to global constraints
-            assert!(utilization >= 0.5, // More lenient threshold
-                   "Compaction occurred too early at step {}: only {}% capacity utilization",
-                   step, utilization * 100.0);
+                 // Compaction can occur when approaching capacity limits. Verified below.
+                 assert!(utilization >= 0.5, // More lenient threshold
+                     "Compaction occurred too early at step {}: only {}% capacity utilization",
+                     step, utilization * 100.0);
         }
     }
 }
@@ -135,8 +131,6 @@ mod error_bounds_validation_tests {
             assert!(error_bound <= expected_bound * 4.0, // Allow more generous bound
                    "Error bound {} too large for k={}, expected ~{}",
                    error_bound, k, expected_bound);
-
-            println!("k={}: error bound ±{:.2}%", k, error_bound * 100.0);
         }
     }
 
@@ -287,9 +281,8 @@ mod internal_state_consistency_tests {
         let total_retained = sketch1.total_retained_items();
         let total_capacity = sketch1.total_nominal_capacity();
 
-        println!("After merge: {} retained vs {} capacity ({}x)",
-                total_retained, total_capacity,
-                total_retained as f32 / total_capacity as f32);
+        // Ensure capacity is positive after merge to validate ratio computations
+        assert!(total_capacity > 0, "Total nominal capacity after merge must be positive");
 
         // Allow significant temporary exceedance after merge with C++ strategy
         // The next update operation will trigger compaction if needed
@@ -363,12 +356,9 @@ mod cross_validation_tests {
 
             // Use simple tolerance check like C++ and Java tests (they use .01 margin)
             let error = (estimated_rank - rank).abs();
-            println!("Rank {}: true={}, estimated={}, error={:.4}",
-                    rank, rank, estimated_rank, error);
-
-            assert!(error <= 0.1,  // Allow 10% error tolerance for C++ strategy
-                   "Rank accuracy failed for {}: estimated {} vs true {}, error {:.4}",
-                   rank, estimated_rank, rank, error);
+                 assert!(error <= 0.1,  // Allow 10% error tolerance for C++ strategy
+                     "Rank accuracy failed for {}: estimated {} vs true {}, error {:.4}",
+                     rank, estimated_rank, rank, error);
         }
 
         // Also test that rank bounds are directionally correct (like C++ tests do)
