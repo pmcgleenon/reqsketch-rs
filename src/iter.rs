@@ -72,9 +72,7 @@ where
             self.current_level += 1;
             self.advance_to_next_level();
 
-            if self.current_level_iter.is_none() {
-                return None;
-            }
+            self.current_level_iter.as_ref()?;
         }
     }
 }

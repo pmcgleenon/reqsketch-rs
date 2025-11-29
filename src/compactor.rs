@@ -4,7 +4,6 @@
 //! with deterministic compaction when capacity is exceeded.
 
 use crate::{RankAccuracy, Result, TotalOrd};
-use std::cmp::Ordering;
 
 fn nearest_even(value: f32) -> u32 {
     // But enforce MIN_K=4 constraint like C++ to prevent infinite loops
@@ -22,8 +21,8 @@ use serde::{Deserialize, Serialize};
 /// by keeping approximately half the items and promoting the rest to the next level.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "T: Clone + TotalOrd + PartialEq + serde::Serialize + serde::de::DeserializeOwned"))]
 pub struct Compactor<T> {
-    // HOT FIELDS - accessed every insert/compaction, grouped for cache locality
     /// Current items in the compactor
     items: Vec<T>,
     /// Whether items are currently sorted
@@ -34,7 +33,6 @@ pub struct Compactor<T> {
     #[cfg_attr(feature = "serde", serde(skip))]
     scratch_buffer: Vec<T>,
 
-    // WARM FIELDS - used during compaction calculations
     /// Actual section size (rounded to integer)
     section_size: u32,
     /// Number of sections in this compactor
@@ -42,7 +40,6 @@ pub struct Compactor<T> {
     /// The level of this compactor (0 = base level)
     lg_weight: u8,
 
-    // COLD FIELDS - configuration, rarely accessed after construction
     /// Whether this compactor is configured for high rank accuracy
     rank_accuracy: RankAccuracy,
     /// Raw section size (may be fractional)
@@ -70,18 +67,15 @@ where
         let nominal: usize = (2 * section_size * num_sections as u32) as usize;
 
         Self {
-            // HOT FIELDS first
             items: Vec::with_capacity(nominal),
             is_sorted: true, // Start sorted (empty)
             state: 0,
             scratch_buffer: Vec::with_capacity(nominal / 2 + 8), // typical promotion size
 
-            // WARM FIELDS
             section_size,
             num_sections,
             lg_weight,
 
-            // COLD FIELDS
             rank_accuracy,
             section_size_raw,
             coin: rand::random::<bool>(), 
@@ -342,59 +336,6 @@ where
         (low, high)
     }
 
-    fn promote_evens_or_odds(&mut self, items: &[T], _rank_accuracy: RankAccuracy) -> &Vec<T> {
-        // Clear and reuse scratch buffer to avoid allocation
-        self.scratch_buffer.clear();
-
-        if items.is_empty() {
-            return &self.scratch_buffer;
-        }
-
-        let odds = if (self.state & 1) == 1 {
-            // For odd state, flip the coin from previous state
-            (self.state >> 1) & 1 == 0 // Flip based on previous state
-        } else {
-            // For even state
-            ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
-        };
-
-        // Pre-allocate capacity to avoid reallocations
-        let estimated_size = (items.len() + 1) / 2;
-        if self.scratch_buffer.capacity() < estimated_size {
-            self.scratch_buffer.reserve(estimated_size - self.scratch_buffer.capacity());
-        }
-
-        let mut i = if odds { 1 } else { 0 };
-        while i < items.len() {
-            self.scratch_buffer.push(items[i].clone());
-            i += 2; // Skip every other item
-        }
-
-        &self.scratch_buffer
-    }
-
-    #[inline(always)]
-    fn promote_evens_or_odds_simple(&self, items: &[T], _rank_accuracy: RankAccuracy) -> Vec<T> {
-        if items.is_empty() {
-            return Vec::new();
-        }
-
-        let odds = if (self.state & 1) == 1 {
-            (self.state >> 1) & 1 == 0
-        } else {
-            ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
-        };
-
-        let mut result = Vec::new();
-        let mut i = if odds { 1 } else { 0 };
-
-        while i < items.len() {
-            result.push(items[i].clone());
-            i += 2; // Skip every other item
-        }
-
-        result
-    }
 
     /// Computes the weight contribution of this compactor for rank calculation.
     ///

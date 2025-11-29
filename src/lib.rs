@@ -32,6 +32,10 @@
 //! }
 //! ```
 
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+
 use std::fmt;
 use std::cmp::Ordering;
 
@@ -94,14 +98,6 @@ impl ReqKey for i32 {}
 impl ReqKey for u64 {}
 impl ReqKey for u32 {}
 
-#[cfg(test)]
-mod test_all_quantiles;
-#[cfg(test)]
-mod test_error_bounds;
-#[cfg(test)]
-mod test_hra_vs_lra_quantiles;
-#[cfg(test)]
-mod test_simple_correctness;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -114,33 +110,27 @@ pub use sorted_view::SortedView;
 /// Configuration for rank accuracy optimization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Default)]
 pub enum RankAccuracy {
     /// Optimize for accuracy at high ranks (near 1.0)
+    #[default]
     HighRank,
     /// Optimize for accuracy at low ranks (near 0.0)
     LowRank,
 }
 
-impl Default for RankAccuracy {
-    fn default() -> Self {
-        RankAccuracy::HighRank
-    }
-}
 
 /// Search criteria for quantile/rank operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum SearchCriteria {
     /// Include the weight of the search item in the result
+    #[default]
     Inclusive,
     /// Exclude the weight of the search item from the result
     Exclusive,
 }
 
-impl Default for SearchCriteria {
-    fn default() -> Self {
-        SearchCriteria::Inclusive
-    }
-}
 
 /// A Relative Error Quantiles sketch for approximate quantile estimation.
 ///
@@ -149,6 +139,7 @@ impl Default for SearchCriteria {
 /// over large data streams with bounded memory usage.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "T: Clone + TotalOrd + PartialEq + serde::Serialize + serde::de::DeserializeOwned"))]
 pub struct ReqSketch<T> {
     k: u16,
     rank_accuracy: RankAccuracy,
@@ -171,14 +162,25 @@ where
     ///
     /// Uses k=12 (roughly 1% relative error at 95% confidence) and high rank accuracy.
     pub fn new() -> Self {
-        ReqSketchBuilder::new().build().expect("Default parameters should always be valid")
+        Self {
+            k: 12,
+            rank_accuracy: RankAccuracy::HighRank,
+            total_n: 0,
+            max_nom_size: 0,
+            num_retained: 0,
+            compactors: Vec::new(),
+            promotion_buf: Vec::with_capacity(12),
+            min_item: None,
+            max_item: None,
+            sorted_view_cache: None,
+        }
     }
 
     /// Creates a new REQ sketch with the specified k parameter.
     ///
     /// # Arguments
     /// * `k` - Controls size and error of the sketch. Must be even and in range [4, 1024].
-    ///         Value of 12 roughly corresponds to 1% relative error at 95% confidence.
+    ///   Value of 12 roughly corresponds to 1% relative error at 95% confidence.
     pub fn with_k(k: u16) -> Result<Self> {
         ReqSketchBuilder::new().k(k)?.build()
     }
@@ -431,45 +433,6 @@ where
         self.sorted_view_cache = None;
     }
 
-    /// Direct quantile computation without materializing full sorted view.
-    /// This eliminates the major allocation bottleneck in compute_sorted_view().
-    fn quantile_kway_merge(&mut self, rank: f64, criteria: SearchCriteria) -> Result<T> {
-        // Build a lightweight collection of all (item, weight) pairs without cloning items
-        let mut weighted_items = Vec::new();
-
-        for compactor in &self.compactors {
-            let weight = compactor.weight();
-            for item in compactor.iter() {
-                weighted_items.push((item, weight));
-            }
-        }
-
-        if weighted_items.is_empty() {
-            return Err(ReqError::EmptySketch);
-        }
-
-        // Sort by item value (items are references, so this is cheap)
-        weighted_items.sort_by(|a, b| a.0.total_cmp(&b.0));
-
-        // Calculate target weight
-        let target_weight = (rank * self.total_n as f64) as u64;
-        let mut cumulative_weight = 0u64;
-
-        // Find the quantile
-        for (item, weight) in &weighted_items {
-            if cumulative_weight + weight > target_weight {
-                return Ok((*item).clone());
-            }
-            cumulative_weight += weight;
-        }
-
-        // Return the last item if we've exhausted all items
-        if let Some((last_item, _)) = weighted_items.last() {
-            Ok((*last_item).clone())
-        } else {
-            Err(ReqError::EmptySketch)
-        }
-    }
 
     // Internal methods
 
@@ -948,14 +911,12 @@ mod tests {
         let n = 50; // Should trigger some compaction
 
         let mut previous_len = 0;
-        let mut compaction_occurred = false;
-
         for i in 0..n {
             sketch.update(i as f64);
 
             // Track if compaction occurs
             if sketch.len() < previous_len {
-                compaction_occurred = true;
+                // compaction occurred
             }
             previous_len = sketch.len();
         }

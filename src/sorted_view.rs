@@ -1,7 +1,6 @@
 //! Sorted view implementation for efficient quantile queries.
 
 use crate::{ReqError, Result, SearchCriteria, TotalOrd};
-use std::cmp::Ordering;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -12,6 +11,7 @@ use serde::{Deserialize, Serialize};
 /// by maintaining items in sorted order with precomputed cumulative weights.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "T: Clone + TotalOrd + PartialEq + serde::Serialize + serde::de::DeserializeOwned"))]
 pub struct SortedView<T> {
     /// Items in sorted order
     items: Vec<T>,
@@ -114,19 +114,9 @@ where
                         // Item is larger than all retained items
                         Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
                     }
-                    (Some(before), Some(after)) if self.items[before] == *item => {
-                        // Exact match
+                    (Some(before), Some(_)) => {
+                        // For non-numeric types, use step function (no interpolation)
                         Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
-                    }
-                    (Some(before), Some(after)) => {
-                        // Interpolate between before and after items 
-                        let before_item = &self.items[before];
-                        let after_item = &self.items[after];
-                        let before_weight = self.cumulative_weights[before];
-                        let after_weight = self.cumulative_weights[after];
-
-                        // For non-numeric types, fall back to step function (no interpolation)
-                        Ok(before_weight as f64 / self.total_weight as f64)
                     }
                 }
             }

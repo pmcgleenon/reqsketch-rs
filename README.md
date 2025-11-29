@@ -73,7 +73,7 @@ cargo run --example req_rank_error --release
 # Creates: assets/req_rank_error_hra.png, assets/req_rank_error_lra.png
 ```
 
-These plots demonstrate the key REQ characteristic: error tapering toward the optimized tail (rank 1.0 for HRA, rank 0.0 for LRA), with confidence bands showing error distribution across randomized trials.
+These plots demonstrate the key REQ characteristic: error tapering toward the optimized tail (rank 1.0 for HRA, rank 0.0 for LRA)
 
 **High Rank Accuracy (HRA) Mode:**
 ![REQ Rank Error - HighRank](assets/req_rank_error_hra.png)
@@ -91,7 +91,7 @@ cargo run --example basic_usage
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request.   
 
 ## License
 

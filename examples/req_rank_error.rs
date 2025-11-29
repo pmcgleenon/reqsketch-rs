@@ -22,7 +22,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Stream length: {}, Plot points: {}, Trials: {}", STREAM_LEN, PLOT_POINTS, TRIALS);
 
     // HRA plot
-    println!("Running HighRank accuracy analysis...");
     run_experiment(
         RankAccuracy::HighRank,
         "assets/req_rank_error_hra.png",
@@ -30,14 +29,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // LRA plot
-    println!("Running LowRank accuracy analysis...");
     run_experiment(
         RankAccuracy::LowRank,
         "assets/req_rank_error_lra.png",
         "REQ Rank Error – LowRank",
     )?;
 
-    println!("✅ Analysis complete!");
     println!("Generated files:");
     println!("  - assets/req_rank_error_hra.png");
     println!("  - assets/req_rank_error_lra.png");
@@ -142,7 +139,6 @@ fn run_experiment(
         title,
     )?;
 
-    println!("  ✅ Generated {}", output_file);
     Ok(())
 }
 
@@ -193,7 +189,7 @@ fn plot_rank_error(
     chart
         .configure_mesh()
         .x_desc("True rank")
-        .y_desc("Absolute Error")
+        .y_desc("Error")
         .draw()?;
 
     // Helper to build line series from (ranks, ys)
