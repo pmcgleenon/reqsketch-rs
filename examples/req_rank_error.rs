@@ -1,12 +1,12 @@
 use plotters::prelude::*;
 use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::rng;
 
 use reqsketch::{ReqSketch, RankAccuracy, SearchCriteria};
 
-const STREAM_LEN: usize = 1 << 20; // 2^20
-const PLOT_POINTS: usize = 100;    // points along rank axis
-const TRIALS: usize = 100;         // increase for smoother curves
+const STREAM_LEN: usize = 1 << 11; // 2^11 = 2048 
+const PLOT_POINTS: usize = 100;    // points along rank axis 
+const TRIALS: usize = 1 << 14;     // 2^14 = 16384 trials 
 
 // Quantile levels for the "pitchfork" curves (approx. +/- 1, 2, 3 sigma)
 const P_MEDIAN: f64 = 0.5;
@@ -19,20 +19,24 @@ const P_MINUS3: f64 = 0.00135;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting REQ rank error analysis...");
-    println!("Stream length: {}, Plot points: {}, Trials: {}", STREAM_LEN, PLOT_POINTS, TRIALS);
+    println!("Parameters: K=12, SL=2^{} ({}), PP={}, LgT={} ({}), Crit=LE",
+             (STREAM_LEN as f64).log2() as u32, STREAM_LEN, PLOT_POINTS,
+             (TRIALS as f64).log2() as u32, TRIALS);
 
-    // HRA plot
+    // HRA plot - legend at top right (where error converges to 0)
     run_experiment(
         RankAccuracy::HighRank,
         "assets/req_rank_error_hra.png",
         "REQ Rank Error – HighRank",
+        SeriesLabelPosition::UpperRight,
     )?;
 
-    // LRA plot
+    // LRA plot - legend at top left (where error converges to 0)
     run_experiment(
         RankAccuracy::LowRank,
         "assets/req_rank_error_lra.png",
         "REQ Rank Error – LowRank",
+        SeriesLabelPosition::UpperLeft,
     )?;
 
     println!("Generated files:");
@@ -46,6 +50,7 @@ fn run_experiment(
     accuracy: RankAccuracy,
     output_file: &str,
     title: &str,
+    legend_pos: SeriesLabelPosition,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Precompute the "true" ranks and query values for the plot points.
     //
@@ -68,11 +73,10 @@ fn run_experiment(
     let mut stream: Vec<f32> = (1..=STREAM_LEN as u32).map(|x| x as f32).collect();
 
     for t in 0..TRIALS {
-        if t % 20 == 0 {
+        if t % 1000 == 0 {
             println!("  Trial {}/{} for {:?} ...", t + 1, TRIALS, accuracy);
         }
-        let mut rng = thread_rng();
-        stream.shuffle(&mut rng);
+        stream.shuffle(&mut rng());
 
         let mut sketch = ReqSketch::builder()
             .k(12)? // match the docs' K=12 example; adjust if you like
@@ -137,6 +141,7 @@ fn run_experiment(
         &plus3_curve,
         &minus3_curve,
         title,
+        legend_pos,
     )?;
 
     Ok(())
@@ -164,6 +169,7 @@ fn plot_rank_error(
     plus3: &[f64],
     minus3: &[f64],
     title: &str,
+    legend_pos: SeriesLabelPosition,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = BitMapBackend::new(filename, (1024, 768)).into_drawing_area();
     root.fill(&WHITE)?;
@@ -239,6 +245,7 @@ fn plot_rank_error(
 
     chart
         .configure_series_labels()
+        .position(legend_pos)
         .border_style(&BLACK)
         .background_style(&WHITE.mix(0.8))
         .draw()?;

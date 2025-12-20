@@ -6,10 +6,7 @@
 use crate::{RankAccuracy, Result, TotalOrd};
 
 fn nearest_even(value: f32) -> u32 {
-    // But enforce MIN_K=4 constraint like C++ to prevent infinite loops
-    // TODO check this
-    const MIN_K: u32 = 4;
-    (((value / 2.0).round() as u32) << 1).max(MIN_K)
+    ((value / 2.0).round() as u32) << 1
 }
 
 #[cfg(feature = "serde")]
@@ -59,18 +56,17 @@ where
     /// * `k` - The k parameter from the parent sketch
     /// * `rank_accuracy` - Rank accuracy configuration
     pub fn new(lg_weight: u8, k: u16, rank_accuracy: RankAccuracy) -> Self {
-        let section_size_raw = (k as f32) / (2.0_f32.powf(lg_weight as f32 / 2.0));
+        let section_size_raw = k as f32;
         let section_size = nearest_even(section_size_raw);
-        let num_sections = 3u8; // Initial number of sections
+        let num_sections = 3u8;
 
-        // Pre-reserve capacity to eliminate Vec reallocations
         let nominal: usize = (2 * section_size * num_sections as u32) as usize;
 
         Self {
             items: Vec::with_capacity(nominal),
-            is_sorted: true, // Start sorted (empty)
+            is_sorted: true,
             state: 0,
-            scratch_buffer: Vec::with_capacity(nominal / 2 + 8), // typical promotion size
+            scratch_buffer: Vec::with_capacity(nominal / 2 + 8),
 
             section_size,
             num_sections,
@@ -78,7 +74,7 @@ where
 
             rank_accuracy,
             section_size_raw,
-            coin: rand::random::<bool>(), 
+            coin: rand::random::<bool>(),
         }
     }
 
@@ -533,10 +529,10 @@ mod tests {
 
     #[test]
     fn test_nearest_even() {
-        assert_eq!(nearest_even(0.0), 4); // 0/2=0, round(0)=0, 0<<1=0, but max(4)=4
-        assert_eq!(nearest_even(1.0), 4); // 1/2=0.5, round(0.5)=1, 1<<1=2, but max(4)=4
-        assert_eq!(nearest_even(2.0), 4); // 2/2=1, round(1)=1, 1<<1=2, but max(4)=4
-        assert_eq!(nearest_even(3.0), 4); // 3/2=1.5, round(1.5)=2, 2<<1=4, max(4)=4
+        assert_eq!(nearest_even(0.0), 0); // 0/2=0, round(0)=0, 0<<1=0
+        assert_eq!(nearest_even(1.0), 2); // 1/2=0.5, round(0.5)=1, 1<<1=2
+        assert_eq!(nearest_even(2.0), 2); // 2/2=1, round(1)=1, 1<<1=2
+        assert_eq!(nearest_even(3.0), 4); // 3/2=1.5, round(1.5)=2, 2<<1=4
         assert_eq!(nearest_even(4.0), 4); // 4/2=2, round(2)=2, 2<<1=4
         assert_eq!(nearest_even(4.6), 4); // 4.6/2=2.3, round(2.3)=2, 2<<1=4
         assert_eq!(nearest_even(5.6), 6); // 5.6/2=2.8, round(2.8)=3, 3<<1=6
