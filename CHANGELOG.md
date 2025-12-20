@@ -18,5 +18,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - added useful links to readme
 - Update rand_distr requirement from 0.4 to 0.5
 - Update rand requirement from 0.8 to 0.9
-- Merge pull request #5 from pmcgleenon/dependabot/cargo/criterion-0.8
 - Update criterion requirement from 0.5 to 0.8
