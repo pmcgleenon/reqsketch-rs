@@ -247,6 +247,7 @@ where
         self.total_n += 1;
         self.num_retained += 1;
 
+        // Trigger compression when global retained equals global max 
         if self.num_retained == self.max_nom_size {
             self.compress();
         }
@@ -304,8 +305,11 @@ where
             self.compactors[i].merge(other_compactor)?;
         }
 
+        self.update_max_nom_size();
+        self.update_num_retained();
+
         // Compress if needed
-        if self.needs_compression() {
+        if self.num_retained >= self.max_nom_size {
             self.compress();
         }
 
@@ -463,31 +467,33 @@ where
         Ok(SortedView::new(weighted_items))
     }
 
-    fn needs_compression(&self) -> bool {
-        self.num_retained >= self.max_nom_size
-    }
-
     fn compress(&mut self) {
-        while let Some(level) = (0..self.compactors.len())
-            .find(|&i| self.compactors[i].num_items() >= self.compactors[i].nominal_capacity())
-        {
-            // Perform compaction on the over-capacity level
-            // Compact into reusable promotion buffer (no allocation, fast path)
-            self.promotion_buf.clear();
-            self.compactors[level].compact_into(self.rank_accuracy, &mut self.promotion_buf);
+        for h in 0..self.compactors.len() {
+            if self.compactors[h].num_items() >= self.compactors[h].nominal_capacity() {
+                // Sort level 0 before compaction
+                if h == 0 {
+                    self.compactors[0].sort();
+                }
 
-            // If we have promoted items, ensure we have a next level
-            if !self.promotion_buf.is_empty() {
-                if level + 1 >= self.compactors.len() {
+                // Grow if at top level
+                if h + 1 >= self.compactors.len() {
                     self.grow();
                 }
-                self.compactors[level + 1].merge_sorted(&self.promotion_buf);
+
+                // Compact into reusable promotion buffer
+                self.promotion_buf.clear();
+                self.compactors[h].compact_into(self.rank_accuracy, &mut self.promotion_buf);
+
+                // Merge promoted items into next level
+                if !self.promotion_buf.is_empty() {
+                    self.compactors[h + 1].merge_sorted(&self.promotion_buf);
+                }
+
+                // Update max_nom_size with capacity change from ensure_enough_sections
+                self.update_max_nom_size();
+                self.update_num_retained();
             }
         }
-
-        // Update global counters after compaction
-        self.update_max_nom_size();
-        self.update_num_retained();
 
         // Invalidate cache
         self.sorted_view_cache = None;

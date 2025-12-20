@@ -8,15 +8,6 @@ REQ sketch is a probabilistic data structure for approximate quantile estimation
 
 This implementation is based on the paper ["Relative Error Streaming Quantiles"](https://arxiv.org/abs/2004.01668) by Graham Cormode, Zohar Karnin, Edo Liberty, Justin Thaler, and Pavel Veselý.   A lot of inspiration was taken from the C++ implementation in Apache DataSketches https://datasketches.apache.org/docs/REQ/ReqSketch.html
 
-## Quick Start
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-reqsketch = "0.1"
-```
-
 ### Basic Usage
 
 ```rust
