@@ -8,6 +8,7 @@ authors = ["Patrick McGleenon"]
 readme = "README.md"
 repository = "https://github.com/pmcgleenon/reqsketch-rs"
 documentation = "https://docs.rs/reqsketch"
+rust-version = "1.87.0"
 keywords = [ "req", "sketch", "quantiles"]
 categories = ["algorithms", "data-structures"]
 exclude = [".github"]
