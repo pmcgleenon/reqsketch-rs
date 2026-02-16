@@ -31,7 +31,7 @@ proptest = "1.0"
 approx = "0.5"
 criterion = { version = "0.8", features = ["html_reports"] }
 rand = "0.10"
-rand_distr = "0.5"
+rand_distr = "0.6"
 # For plotting functionality:
 plotters = "0.3"
 
