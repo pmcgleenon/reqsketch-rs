@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/pmcgleenon/reqsketch-rs/compare/v0.1.1...v0.1.2) - 2026-02-21
+
+### Other
+
+- Update rand_distr requirement from 0.5 to 0.6
+- Update rand requirement from 0.9 to 0.10
+- MSRV in cargo
+
 ## [0.1.1](https://github.com/pmcgleenon/reqsketch-rs/compare/v0.1.0...v0.1.1) - 2025-12-20
 
 ### Fixed
