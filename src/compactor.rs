@@ -325,11 +325,6 @@ where
             return (0, 0); // Signal no compaction needed
         }
 
-        // Ensure minimum section size for meaningful compaction
-        if self.items.len() < 2 * self.section_size as usize {
-            return (0, 0); // Skip compaction if level too small
-        }
-
         (low, high)
     }
 
