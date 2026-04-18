@@ -276,7 +276,7 @@ where
 
         const MIN_K: u32 = 4; // matches datasketches-cpp
 
-        if self.state >= (1u64 << (self.num_sections - 1)) && ne >= MIN_K {
+        if self.state >= (1u64 << (self.num_sections - 1)).saturating_sub(1) && ne >= MIN_K {
             self.section_size_raw = ssr;
             self.section_size = ne;
             self.num_sections <<= 1; // Double the sections
