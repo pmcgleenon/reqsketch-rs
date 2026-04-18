@@ -44,11 +44,19 @@ where
         // Sort by item value - use unstable sort for better performance
         weighted_items.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
 
-        let mut items = Vec::with_capacity(weighted_items.len());
+        let mut items: Vec<T> = Vec::with_capacity(weighted_items.len());
         let mut cumulative_weights = Vec::with_capacity(weighted_items.len());
         let mut cumulative_weight = 0u64;
 
         for (item, weight) in weighted_items {
+            if let Some(last) = items.last() {
+                if matches!(last.total_cmp(&item), std::cmp::Ordering::Equal) {
+                    cumulative_weight += weight;
+                    let last_idx = cumulative_weights.len() - 1;
+                    cumulative_weights[last_idx] = cumulative_weight;
+                    continue;
+                }
+            }
             cumulative_weight += weight;
             items.push(item);
             cumulative_weights.push(cumulative_weight);
@@ -175,25 +183,14 @@ where
             },
         };
 
-        // Find item using binary search 
         let index = match criteria {
             SearchCriteria::Inclusive => {
-                self.cumulative_weights.binary_search(&target_weight)
-                    .unwrap_or_else(|pos| pos)
+                // Equivalent to C++ lower_bound: first index where cumulative_weight >= target
+                self.cumulative_weights.partition_point(|&w| w < target_weight)
             },
             SearchCriteria::Exclusive => {
-                match self.cumulative_weights.binary_search(&target_weight) {
-                    Ok(pos) => {
-                        // Found exact match, find first element > target_weight
-                        let mut next_pos = pos + 1;
-                        while next_pos < self.cumulative_weights.len()
-                              && self.cumulative_weights[next_pos] == target_weight {
-                            next_pos += 1;
-                        }
-                        next_pos
-                    },
-                    Err(pos) => pos, // First element > target_weight
-                }
+                // Equivalent to C++ upper_bound: first index where cumulative_weight > target
+                self.cumulative_weights.partition_point(|&w| w <= target_weight)
             },
         };
 
