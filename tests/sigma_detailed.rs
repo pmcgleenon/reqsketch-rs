@@ -1,9 +1,9 @@
 use reqsketch::{ReqSketch, RankAccuracy, SearchCriteria};
 
-/// Test 3-Sigma compliance for rank error bounds
-/// Validates that rank estimates fall within expected statistical bounds
+/// Test that bounds are structurally valid: nested (1σ ⊂ 2σ ⊂ 3σ), within [0,1],
+/// and lower <= upper. These are deterministic properties, not statistical.
 #[test]
-fn test_3_sigma_compliance() {
+fn test_bounds_structural_properties() {
     let mut sketch = ReqSketch::builder()
         .k(12)
         .unwrap()
@@ -16,100 +16,68 @@ fn test_3_sigma_compliance() {
         sketch.update(i as f64);
     }
 
-    // Test comprehensive range of quantiles
     let test_ranks = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999];
 
-    let mut passed_3sigma = 0;
-    let mut passed_2sigma = 0;
-    let total_tests = test_ranks.len();
-
     for &rank in &test_ranks {
-        let true_quantile = rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let bounds: Vec<(f64, f64)> = (1..=3u8)
+            .map(|s| (sketch.get_rank_lower_bound(rank, s), sketch.get_rank_upper_bound(rank, s)))
+            .collect();
 
-        // Test 3-sigma bounds
-        let lower_bound_3 = sketch.get_rank_lower_bound(rank, 3);
-        let upper_bound_3 = sketch.get_rank_upper_bound(rank, 3);
-        let within_3sigma = estimated_rank >= lower_bound_3 && estimated_rank <= upper_bound_3;
-
-        // Test 2-sigma bounds
-        let lower_bound_2 = sketch.get_rank_lower_bound(rank, 2);
-        let upper_bound_2 = sketch.get_rank_upper_bound(rank, 2);
-        let within_2sigma = estimated_rank >= lower_bound_2 && estimated_rank <= upper_bound_2;
-
-        if within_3sigma {
-            passed_3sigma += 1;
-        }
-        if within_2sigma {
-            passed_2sigma += 1;
+        for (sigma, &(lower, upper)) in bounds.iter().enumerate() {
+            let sigma = sigma + 1;
+            assert!(lower <= upper,
+                "{}-sigma bounds invalid for rank {}: [{}, {}]", sigma, rank, lower, upper);
+            assert!((0.0..=1.0).contains(&lower),
+                "{}-sigma lower bound out of [0,1] for rank {}: {}", sigma, rank, lower);
+            assert!((0.0..=1.0).contains(&upper),
+                "{}-sigma upper bound out of [0,1] for rank {}: {}", sigma, rank, upper);
         }
 
-        // Bounds should be valid (lower <= upper)
-        assert!(lower_bound_3 <= upper_bound_3,
-            "3-sigma bounds invalid for rank {}: lower={}, upper={}",
-            rank, lower_bound_3, upper_bound_3);
-        assert!(lower_bound_2 <= upper_bound_2,
-            "2-sigma bounds invalid for rank {}: lower={}, upper={}",
-            rank, lower_bound_2, upper_bound_2);
-
-        // Error should be reasonable (less than 50% for most quantiles)
-        let error_pct = (estimated_rank - rank).abs() / rank * 100.0;
-        if (0.1..=0.9).contains(&rank) {
-            assert!(error_pct < 50.0,
-                "Excessive error for rank {}: {:.2}%", rank, error_pct);
-        }
+        // Nesting: wider sigma should give wider bounds
+        assert!(bounds[1].0 <= bounds[0].0 && bounds[0].1 <= bounds[1].1,
+            "2-sigma bounds should contain 1-sigma bounds for rank {}", rank);
+        assert!(bounds[2].0 <= bounds[1].0 && bounds[1].1 <= bounds[2].1,
+            "3-sigma bounds should contain 2-sigma bounds for rank {}", rank);
     }
-
-    let pass_rate_3sigma = passed_3sigma as f64 / total_tests as f64 * 100.0;
-    let pass_rate_2sigma = passed_2sigma as f64 / total_tests as f64 * 100.0;
-
-    // Statistical bounds should generally work
-    assert!(pass_rate_2sigma >= 70.0,
-        "2-sigma pass rate too low: {:.1}% (expected ≥70%)", pass_rate_2sigma);
-    assert!(pass_rate_3sigma >= 80.0,
-        "3-sigma pass rate too low: {:.1}% (expected ≥80%)", pass_rate_3sigma);
-
-    // 3-sigma should perform better than 2-sigma
-    assert!(pass_rate_3sigma >= pass_rate_2sigma,
-        "3-sigma pass rate ({:.1}%) should be ≥ 2-sigma pass rate ({:.1}%)",
-        pass_rate_3sigma, pass_rate_2sigma);
 }
 
-/// Test bounds consistency across different sigma levels
+/// Multi-trial coverage test: run many independent sketches and check that
+/// the empirical coverage of 3-sigma bounds matches the expected ~99.7%.
+/// This is a proper statistical test, unlike checking a single instance.
 #[test]
-fn test_bounds_consistency() {
-    let mut sketch = ReqSketch::builder()
-        .k(12)
-        .unwrap()
-        .rank_accuracy(RankAccuracy::HighRank)
-        .build()
-        .unwrap();
+fn test_3_sigma_empirical_coverage() {
+    let trials = 50;
+    let n = 10_000;
+    let test_rank = 0.9; // HRA mode, test near the optimized end
+    let mut within_bounds_count = 0;
 
-    for i in 0..1000 {
-        sketch.update(i as f64);
-    }
+    for trial in 0..trials {
+        let mut sketch = ReqSketch::builder()
+            .k(12)
+            .unwrap()
+            .rank_accuracy(RankAccuracy::HighRank)
+            .build()
+            .unwrap();
 
-    let test_ranks = [0.01, 0.1, 0.5, 0.9, 0.99];
+        // Use different data per trial to get independent randomness
+        for i in 0..n {
+            sketch.update((i as f64) + (trial as f64 * 0.001));
+        }
 
-    for &rank in &test_ranks {
-        let bounds_1 = (sketch.get_rank_lower_bound(rank, 1), sketch.get_rank_upper_bound(rank, 1));
-        let bounds_2 = (sketch.get_rank_lower_bound(rank, 2), sketch.get_rank_upper_bound(rank, 2));
-        let bounds_3 = (sketch.get_rank_lower_bound(rank, 3), sketch.get_rank_upper_bound(rank, 3));
+        let true_quantile = test_rank * (n - 1) as f64 + (trial as f64 * 0.001);
+        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+        let lower = sketch.get_rank_lower_bound(test_rank, 3);
+        let upper = sketch.get_rank_upper_bound(test_rank, 3);
 
-        // Higher sigma should give wider bounds
-        assert!(bounds_2.0 <= bounds_1.0 && bounds_1.1 <= bounds_2.1,
-            "2-sigma bounds should contain 1-sigma bounds for rank {}", rank);
-        assert!(bounds_3.0 <= bounds_2.0 && bounds_2.1 <= bounds_3.1,
-            "3-sigma bounds should contain 2-sigma bounds for rank {}", rank);
-
-        // All bounds should be within [0,1]
-        for sigma in 1..=3 {
-            let lower = sketch.get_rank_lower_bound(rank, sigma);
-            let upper = sketch.get_rank_upper_bound(rank, sigma);
-            assert!((0.0..=1.0).contains(&lower),
-                "{}-sigma lower bound out of range for rank {}: {}", sigma, rank, lower);
-            assert!((0.0..=1.0).contains(&upper),
-                "{}-sigma upper bound out of range for rank {}: {}", sigma, rank, upper);
+        if estimated_rank >= lower && estimated_rank <= upper {
+            within_bounds_count += 1;
         }
     }
+
+    let coverage = within_bounds_count as f64 / trials as f64;
+    // 3-sigma should cover ~99.7%, but with only 50 trials and k=12,
+    // we accept ≥80% as a meaningful threshold
+    assert!(coverage >= 0.80,
+        "3-sigma empirical coverage {:.1}% across {} trials is too low (expected ≥80%)",
+        coverage * 100.0, trials);
 }

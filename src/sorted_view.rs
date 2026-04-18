@@ -100,45 +100,23 @@ where
 
         match criteria {
             SearchCriteria::Inclusive => {
-                // Find where this item would fit and use interpolation 
-                let mut before_idx = None;
-                let mut after_idx = None;
-
-                for i in 0..self.items.len() {
-                    if self.items[i].total_cmp(item).is_le() {
-                        before_idx = Some(i);
-                    } else {
-                        after_idx = Some(i);
-                        break;
-                    }
-                }
-
-                match (before_idx, after_idx) {
-                    (None, _) => {
-                        // Item is smaller than all retained items
-                        Ok(0.0)
-                    }
-                    (Some(before), None) => {
-                        // Item is larger than all retained items
-                        Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
-                    }
-                    (Some(before), Some(_)) => {
-                        // For non-numeric types, use step function (no interpolation)
-                        Ok(self.cumulative_weights[before] as f64 / self.total_weight as f64)
-                    }
+                // Find the last position where items[i] <= item
+                // partition_point finds first index where predicate is false
+                let pos = self.items.partition_point(|x| x.total_cmp(item).is_le());
+                if pos == 0 {
+                    Ok(0.0)
+                } else {
+                    Ok(self.cumulative_weights[pos - 1] as f64 / self.total_weight as f64)
                 }
             }
             SearchCriteria::Exclusive => {
-                // Find the last occurrence of items < target (strictly less than)
-                let mut cumulative_weight = 0u64;
-                for i in 0..self.items.len() {
-                    if self.items[i].total_cmp(item).is_lt() {
-                        cumulative_weight = self.cumulative_weights[i];
-                    } else {
-                        break;
-                    }
+                // Find the last position where items[i] < item
+                let pos = self.items.partition_point(|x| x.total_cmp(item).is_lt());
+                if pos == 0 {
+                    Ok(0.0)
+                } else {
+                    Ok(self.cumulative_weights[pos - 1] as f64 / self.total_weight as f64)
                 }
-                Ok(cumulative_weight as f64 / self.total_weight as f64)
             }
         }
     }
