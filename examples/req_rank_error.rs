@@ -1,12 +1,12 @@
 use plotters::prelude::*;
-use rand::seq::SliceRandom;
 use rand::rng;
+use rand::seq::SliceRandom;
 
-use reqsketch::{ReqSketch, RankAccuracy, SearchCriteria};
+use reqsketch::{RankAccuracy, ReqSketch, SearchCriteria};
 
-const STREAM_LEN: usize = 1 << 11; // 2^11 = 2048 
-const PLOT_POINTS: usize = 100;    // points along rank axis 
-const TRIALS: usize = 1 << 14;     // 2^14 = 16384 trials 
+const STREAM_LEN: usize = 1 << 11; // 2^11 = 2048
+const PLOT_POINTS: usize = 100; // points along rank axis
+const TRIALS: usize = 1 << 14; // 2^14 = 16384 trials
 
 // Quantile levels for the "pitchfork" curves (approx. +/- 1, 2, 3 sigma)
 const P_MEDIAN: f64 = 0.5;
@@ -19,9 +19,14 @@ const P_MINUS3: f64 = 0.00135;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting REQ rank error analysis...");
-    println!("Parameters: K=12, SL=2^{} ({}), PP={}, LgT={} ({}), Crit=LE",
-             (STREAM_LEN as f64).log2() as u32, STREAM_LEN, PLOT_POINTS,
-             (TRIALS as f64).log2() as u32, TRIALS);
+    println!(
+        "Parameters: K=12, SL=2^{} ({}), PP={}, LgT={} ({}), Crit=LE",
+        (STREAM_LEN as f64).log2() as u32,
+        STREAM_LEN,
+        PLOT_POINTS,
+        (TRIALS as f64).log2() as u32,
+        TRIALS
+    );
 
     // HRA plot - legend at top right (where error converges to 0)
     run_experiment(
@@ -67,7 +72,9 @@ fn run_experiment(
     }
 
     // errors[j] will hold TRIALS samples of est_rank - true_rank at plot point j
-    let mut errors: Vec<Vec<f64>> = vec![Vec::with_capacity(TRIALS); PLOT_POINTS];
+    let mut errors: Vec<Vec<f64>> = (0..PLOT_POINTS)
+        .map(|_| Vec::with_capacity(TRIALS))
+        .collect();
 
     // Base stream: 1..=STREAM_LEN as f32
     let mut stream: Vec<f32> = (1..=STREAM_LEN as u32).map(|x| x as f32).collect();
@@ -92,8 +99,7 @@ fn run_experiment(
             let v = query_values[j];
             let true_rank = true_ranks[j];
 
-            let est_rank = sketch
-                .rank(&v, SearchCriteria::Inclusive)?;
+            let est_rank = sketch.rank(&v, SearchCriteria::Inclusive)?;
 
             let err = est_rank - true_rank;
             errors[j].push(err);
@@ -109,8 +115,8 @@ fn run_experiment(
     let mut plus3_curve = Vec::with_capacity(PLOT_POINTS);
     let mut minus3_curve = Vec::with_capacity(PLOT_POINTS);
 
-    for j in 0..PLOT_POINTS {
-        let mut e = errors[j].clone();
+    for err_samples in errors.iter().take(PLOT_POINTS) {
+        let mut e = err_samples.clone();
         e.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         let median = get_quantile(&e, P_MEDIAN);
@@ -158,6 +164,7 @@ fn get_quantile(sorted: &[f64], q: f64) -> f64 {
 }
 
 /// Draws the rank error "pitchfork" plot.
+#[allow(clippy::too_many_arguments)]
 fn plot_rank_error(
     filename: &str,
     ranks: &[f64],
@@ -200,11 +207,7 @@ fn plot_rank_error(
 
     // Helper to build line series from (ranks, ys)
     let make_series = |ys: &[f64]| -> Vec<(f64, f64)> {
-        ranks
-            .iter()
-            .zip(ys.iter())
-            .map(|(r, y)| (*r, *y))
-            .collect()
+        ranks.iter().zip(ys.iter()).map(|(r, y)| (*r, *y)).collect()
     };
 
     // Median (center) line
@@ -246,8 +249,8 @@ fn plot_rank_error(
     chart
         .configure_series_labels()
         .position(legend_pos)
-        .border_style(&BLACK)
-        .background_style(&WHITE.mix(0.8))
+        .border_style(BLACK)
+        .background_style(WHITE.mix(0.8))
         .draw()?;
 
     root.present()?;

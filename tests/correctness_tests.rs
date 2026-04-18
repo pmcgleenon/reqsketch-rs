@@ -6,9 +6,9 @@
 //! 3. Property-based testing with randomized inputs
 //! 4. Statistical accuracy validation
 
-use reqsketch::{ReqSketch, SearchCriteria, RankAccuracy};
 use approx::assert_relative_eq;
 use proptest::prelude::*;
+use reqsketch::{RankAccuracy, ReqSketch, SearchCriteria};
 
 /// Test cases ported from the C++ and Java reference implementations
 /// These ensure our implementation produces identical results
@@ -47,15 +47,50 @@ mod reference_tests {
         assert_eq!(sketch.max_item(), Some(&1.0));
 
         // Rank tests (matching C++ test cases)
-        assert_relative_eq!(sketch.rank(&1.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 0.0);
-        assert_relative_eq!(sketch.rank(&1.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 1.0);
-        assert_relative_eq!(sketch.rank(&1.1, SearchCriteria::Exclusive).expect("Operation should succeed"), 1.0);
-        assert_relative_eq!(sketch.rank(&f32::INFINITY, SearchCriteria::Inclusive).expect("Operation should succeed"), 1.0);
+        assert_relative_eq!(
+            sketch
+                .rank(&1.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            0.0
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&1.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            1.0
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&1.1, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            1.0
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&f32::INFINITY, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            1.0
+        );
 
         // Quantile tests
-        assert_relative_eq!(sketch.quantile(0.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 1.0);
-        assert_relative_eq!(sketch.quantile(0.5, SearchCriteria::Exclusive).expect("Operation should succeed"), 1.0);
-        assert_relative_eq!(sketch.quantile(1.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 1.0);
+        assert_relative_eq!(
+            sketch
+                .quantile(0.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            1.0
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(0.5, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            1.0
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(1.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            1.0
+        );
     }
 
     #[test]
@@ -89,10 +124,30 @@ mod reference_tests {
         assert_eq!(sketch.num_retained(), 6);
 
         // Rank tests (matching C++ reference)
-        assert_relative_eq!(sketch.rank(&1.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 0.0);
-        assert_relative_eq!(sketch.rank(&1.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 0.5);
-        assert_relative_eq!(sketch.rank(&2.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 0.5);
-        assert_relative_eq!(sketch.rank(&2.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 1.0);
+        assert_relative_eq!(
+            sketch
+                .rank(&1.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            0.0
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&1.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            0.5
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&2.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            0.5
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&2.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            1.0
+        );
     }
 
     #[test]
@@ -108,43 +163,167 @@ mod reference_tests {
         assert_eq!(sketch.num_retained(), 10);
 
         // Exclusive rank tests (matching C++ reference)
-        assert_relative_eq!(sketch.rank(&1.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 0.0, epsilon = 1e-6);
-        assert_relative_eq!(sketch.rank(&2.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 0.1, epsilon = 1e-6);
-        assert_relative_eq!(sketch.rank(&6.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 0.5, epsilon = 1e-6);
-        assert_relative_eq!(sketch.rank(&9.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 0.8, epsilon = 1e-6);
-        assert_relative_eq!(sketch.rank(&10.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 0.9, epsilon = 1e-6);
+        assert_relative_eq!(
+            sketch
+                .rank(&1.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            0.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&2.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            0.1,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&6.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            0.5,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&9.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            0.8,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&10.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            0.9,
+            epsilon = 1e-6
+        );
 
         // Inclusive rank tests
-        assert_relative_eq!(sketch.rank(&1.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 0.1, epsilon = 1e-6);
-        assert_relative_eq!(sketch.rank(&2.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 0.2, epsilon = 1e-6);
-        assert_relative_eq!(sketch.rank(&5.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 0.5, epsilon = 1e-6);
-        assert_relative_eq!(sketch.rank(&9.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 0.9, epsilon = 1e-6);
-        assert_relative_eq!(sketch.rank(&10.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 1.0, epsilon = 1e-6);
+        assert_relative_eq!(
+            sketch
+                .rank(&1.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            0.1,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&2.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            0.2,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&5.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            0.5,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&9.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            0.9,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .rank(&10.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            1.0,
+            epsilon = 1e-6
+        );
 
         // Exclusive quantile tests
-        assert_relative_eq!(sketch.quantile(0.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 1.0, epsilon = 1e-6);
-        assert_relative_eq!(sketch.quantile(0.1, SearchCriteria::Exclusive).expect("Operation should succeed"), 2.0, epsilon = 1e-6);
-        assert_relative_eq!(sketch.quantile(0.5, SearchCriteria::Exclusive).expect("Operation should succeed"), 6.0, epsilon = 1e-6);
-        assert_relative_eq!(sketch.quantile(0.9, SearchCriteria::Exclusive).expect("Operation should succeed"), 10.0, epsilon = 1e-6);
-        assert_relative_eq!(sketch.quantile(1.0, SearchCriteria::Exclusive).expect("Operation should succeed"), 10.0, epsilon = 1e-6);
+        assert_relative_eq!(
+            sketch
+                .quantile(0.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            1.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(0.1, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            2.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(0.5, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            6.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(0.9, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            10.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(1.0, SearchCriteria::Exclusive)
+                .expect("Operation should succeed"),
+            10.0,
+            epsilon = 1e-6
+        );
 
         // Inclusive quantile tests
-        assert_relative_eq!(sketch.quantile(0.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 1.0, epsilon = 1e-6);
-        assert_relative_eq!(sketch.quantile(0.1, SearchCriteria::Inclusive).expect("Operation should succeed"), 1.0, epsilon = 1e-6);
-        assert_relative_eq!(sketch.quantile(0.5, SearchCriteria::Inclusive).expect("Operation should succeed"), 5.0, epsilon = 1e-6);
-        assert_relative_eq!(sketch.quantile(0.9, SearchCriteria::Inclusive).expect("Operation should succeed"), 9.0, epsilon = 1e-6);
-        assert_relative_eq!(sketch.quantile(1.0, SearchCriteria::Inclusive).expect("Operation should succeed"), 10.0, epsilon = 1e-6);
+        assert_relative_eq!(
+            sketch
+                .quantile(0.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            1.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(0.1, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            1.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(0.5, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            5.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(0.9, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            9.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            sketch
+                .quantile(1.0, SearchCriteria::Inclusive)
+                .expect("Operation should succeed"),
+            10.0,
+            epsilon = 1e-6
+        );
 
         // CDF test (matching C++ reference)
         let splits = [2.0, 6.0, 9.0];
-        let cdf = sketch.cdf(&splits, SearchCriteria::Exclusive).expect("Operation should succeed");
+        let cdf = sketch
+            .cdf(&splits, SearchCriteria::Exclusive)
+            .expect("Operation should succeed");
         assert_relative_eq!(cdf[0], 0.1, epsilon = 1e-6);
         assert_relative_eq!(cdf[1], 0.5, epsilon = 1e-6);
         assert_relative_eq!(cdf[2], 0.8, epsilon = 1e-6);
         assert_relative_eq!(cdf[3], 1.0, epsilon = 1e-6);
 
         // PMF test (matching C++ reference)
-        let pmf = sketch.pmf(&splits, SearchCriteria::Exclusive).expect("Operation should succeed");
+        let pmf = sketch
+            .pmf(&splits, SearchCriteria::Exclusive)
+            .expect("Operation should succeed");
         assert_relative_eq!(pmf[0], 0.1, epsilon = 1e-6);
         assert_relative_eq!(pmf[1], 0.4, epsilon = 1e-6);
         assert_relative_eq!(pmf[2], 0.3, epsilon = 1e-6);
@@ -166,17 +345,44 @@ mod reference_tests {
         assert!(sketch.num_retained() < n as u32);
 
         // Rank tests with appropriate tolerance for estimation mode
-        let r0 = sketch.rank(&0.0, SearchCriteria::Exclusive).expect("Operation should succeed");
-        let rmax = sketch.rank(&(n as f32), SearchCriteria::Exclusive).expect("Operation should succeed");
-        let rmid = sketch.rank(&(n as f32 / 2.0), SearchCriteria::Exclusive).expect("Operation should succeed");
-        let rend = sketch.rank(&((n - 1) as f32), SearchCriteria::Exclusive).expect("Operation should succeed");
+        let r0 = sketch
+            .rank(&0.0, SearchCriteria::Exclusive)
+            .expect("Operation should succeed");
+        let rmax = sketch
+            .rank(&(n as f32), SearchCriteria::Exclusive)
+            .expect("Operation should succeed");
+        let rmid = sketch
+            .rank(&(n as f32 / 2.0), SearchCriteria::Exclusive)
+            .expect("Operation should succeed");
+        let rend = sketch
+            .rank(&((n - 1) as f32), SearchCriteria::Exclusive)
+            .expect("Operation should succeed");
 
         // Use manual assertions with appropriate tolerances for large datasets
-        assert!((r0 - 0.0).abs() <= 1e-3, "Rank of 0.0 should be ~0.0, got {}", r0);
-        assert!((rmax - 1.0).abs() <= 1e-3, "Rank of {} should be ~1.0, got {}", n as f32, rmax);
-        assert!((rmid - 0.5).abs() <= 0.15, "Rank of {} should be ~0.5, got {} (error: {:.1}%)",
-                n as f32 / 2.0, rmid, (rmid - 0.5).abs() * 200.0);
-        assert!((rend - 1.0).abs() <= 0.05, "Rank of {} should be ~1.0, got {}", (n - 1) as f32, rend);
+        assert!(
+            (r0 - 0.0).abs() <= 1e-3,
+            "Rank of 0.0 should be ~0.0, got {}",
+            r0
+        );
+        assert!(
+            (rmax - 1.0).abs() <= 1e-3,
+            "Rank of {} should be ~1.0, got {}",
+            n as f32,
+            rmax
+        );
+        assert!(
+            (rmid - 0.5).abs() <= 0.01,
+            "Rank of {} should be ~0.5, got {} (error: {:.1}%)",
+            n as f32 / 2.0,
+            rmid,
+            (rmid - 0.5).abs() * 200.0
+        );
+        assert!(
+            (rend - 1.0).abs() <= 0.05,
+            "Rank of {} should be ~1.0, got {}",
+            (n - 1) as f32,
+            rend
+        );
 
         assert_eq!(sketch.min_item(), Some(&0.0));
         assert_eq!(sketch.max_item(), Some(&((n - 1) as f32)));
@@ -184,8 +390,16 @@ mod reference_tests {
 
     #[test]
     fn test_merge_into_empty() {
-        let mut sketch1: ReqSketch<f32> = ReqSketch::builder().k(40).expect("Operation should succeed").build().expect("Operation should succeed");
-        let mut sketch2: ReqSketch<f32> = ReqSketch::builder().k(40).expect("Operation should succeed").build().expect("Operation should succeed");
+        let mut sketch1: ReqSketch<f32> = ReqSketch::builder()
+            .k(40)
+            .expect("Operation should succeed")
+            .build()
+            .expect("Operation should succeed");
+        let mut sketch2: ReqSketch<f32> = ReqSketch::builder()
+            .k(40)
+            .expect("Operation should succeed")
+            .build()
+            .expect("Operation should succeed");
 
         for i in 0..1000 {
             sketch2.update(i as f32);
@@ -195,12 +409,20 @@ mod reference_tests {
         assert_eq!(sketch1.min_item(), Some(&0.0));
         assert_eq!(sketch1.max_item(), Some(&999.0));
 
-        // Test quantiles with tolerance appropriate for k=40
-        // REQ sketches with k=40 provide accuracy around 10-15% for extreme quantiles
-        let q25 = sketch1.quantile(0.25, SearchCriteria::Inclusive).expect("Operation should succeed");
-        let q50 = sketch1.quantile(0.5, SearchCriteria::Inclusive).expect("Operation should succeed");
-        let q75 = sketch1.quantile(0.75, SearchCriteria::Inclusive).expect("Operation should succeed");
-        let r50 = sketch1.rank(&500.0, SearchCriteria::Inclusive).expect("Operation should succeed");
+        // k=40 with n=1000 is well within exact mode, so quantile accuracy
+        // should match the C++ reference (~1%).
+        let q25 = sketch1
+            .quantile(0.25, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
+        let q50 = sketch1
+            .quantile(0.5, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
+        let q75 = sketch1
+            .quantile(0.75, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
+        let r50 = sketch1
+            .rank(&500.0, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
 
         // Use manual assertions with appropriate tolerances
         let q25_error = (q25 - 250.0).abs() / 250.0;
@@ -208,16 +430,40 @@ mod reference_tests {
         let q75_error = (q75 - 750.0).abs() / 750.0;
         let r50_error = (r50 - 0.5).abs() / 0.5;
 
-        assert!(q25_error <= 0.15, "25th percentile error too high: {} > 15%", q25_error * 100.0);
-        assert!(q50_error <= 0.05, "50th percentile error too high: {} > 5%", q50_error * 100.0);
-        assert!(q75_error <= 0.15, "75th percentile error too high: {} > 15%", q75_error * 100.0);
-        assert!(r50_error <= 0.05, "Rank error too high: {} > 5%", r50_error * 100.0);
+        assert!(
+            q25_error <= 0.03,
+            "25th percentile error too high: {} > 3%",
+            q25_error * 100.0
+        );
+        assert!(
+            q50_error <= 0.03,
+            "50th percentile error too high: {} > 3%",
+            q50_error * 100.0
+        );
+        assert!(
+            q75_error <= 0.03,
+            "75th percentile error too high: {} > 3%",
+            q75_error * 100.0
+        );
+        assert!(
+            r50_error <= 0.03,
+            "Rank error too high: {} > 3%",
+            r50_error * 100.0
+        );
     }
 
     #[test]
     fn test_merge_two_ranges() {
-        let mut sketch1: ReqSketch<f32> = ReqSketch::builder().k(100).expect("Operation should succeed").build().expect("Operation should succeed");
-        let mut sketch2: ReqSketch<f32> = ReqSketch::builder().k(100).expect("Operation should succeed").build().expect("Operation should succeed");
+        let mut sketch1: ReqSketch<f32> = ReqSketch::builder()
+            .k(100)
+            .expect("Operation should succeed")
+            .build()
+            .expect("Operation should succeed");
+        let mut sketch2: ReqSketch<f32> = ReqSketch::builder()
+            .k(100)
+            .expect("Operation should succeed")
+            .build()
+            .expect("Operation should succeed");
 
         for i in 0..1000 {
             sketch1.update(i as f32);
@@ -232,10 +478,18 @@ mod reference_tests {
         assert_eq!(sketch1.max_item(), Some(&1999.0));
 
         // Test quantiles with appropriate tolerance for k=100
-        let q25 = sketch1.quantile(0.25, SearchCriteria::Inclusive).expect("Operation should succeed");
-        let q50 = sketch1.quantile(0.5, SearchCriteria::Inclusive).expect("Operation should succeed");
-        let q75 = sketch1.quantile(0.75, SearchCriteria::Inclusive).expect("Operation should succeed");
-        let r50 = sketch1.rank(&1000.0, SearchCriteria::Inclusive).expect("Operation should succeed");
+        let q25 = sketch1
+            .quantile(0.25, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
+        let q50 = sketch1
+            .quantile(0.5, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
+        let q75 = sketch1
+            .quantile(0.75, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
+        let r50 = sketch1
+            .rank(&1000.0, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
 
         // Use manual assertions with appropriate tolerances for k=100
         let q25_error = (q25 - 500.0).abs() / 500.0;
@@ -243,10 +497,26 @@ mod reference_tests {
         let q75_error = (q75 - 1500.0).abs() / 1500.0;
         let r50_error = (r50 - 0.5).abs() / 0.5;
 
-        assert!(q25_error <= 0.05, "25th percentile error too high: {:.1}% > 5%", q25_error * 100.0);
-        assert!(q50_error <= 0.03, "50th percentile error too high: {:.1}% > 3%", q50_error * 100.0);
-        assert!(q75_error <= 0.05, "75th percentile error too high: {:.1}% > 5%", q75_error * 100.0);
-        assert!(r50_error <= 0.03, "Rank error too high: {:.1}% > 3%", r50_error * 100.0);
+        assert!(
+            q25_error <= 0.05,
+            "25th percentile error too high: {:.1}% > 5%",
+            q25_error * 100.0
+        );
+        assert!(
+            q50_error <= 0.03,
+            "50th percentile error too high: {:.1}% > 3%",
+            q50_error * 100.0
+        );
+        assert!(
+            q75_error <= 0.05,
+            "75th percentile error too high: {:.1}% > 5%",
+            q75_error * 100.0
+        );
+        assert!(
+            r50_error <= 0.03,
+            "Rank error too high: {:.1}% > 3%",
+            r50_error * 100.0
+        );
     }
 
     #[test]
@@ -294,11 +564,16 @@ mod statistical_tests {
         // High ranks where HRA excels
         for &rank in &[0.9, 0.95, 0.99] {
             let true_quantile = rank * (n - 1) as f64;
-            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive)
+            let estimated_rank = sketch
+                .rank(&true_quantile, SearchCriteria::Inclusive)
                 .expect("rank should succeed");
             let rank_error = (estimated_rank - rank).abs();
-            assert!(rank_error < 0.05,
-                "HRA high-rank error too large at rank {}: error={:.4}", rank, rank_error);
+            assert!(
+                rank_error < 0.05,
+                "HRA high-rank error too large at rank {}: error={:.4}",
+                rank,
+                rank_error
+            );
         }
     }
 
@@ -316,7 +591,9 @@ mod statistical_tests {
         let mut last_rank = 0.0;
 
         for value in test_values {
-            let rank = sketch.rank(&value, SearchCriteria::Inclusive).expect("Operation should succeed");
+            let rank = sketch
+                .rank(&value, SearchCriteria::Inclusive)
+                .expect("Operation should succeed");
             assert!(rank >= last_rank, "Ranks should be monotonic");
             assert!((0.0..=1.0).contains(&rank), "Ranks should be in [0,1]");
             last_rank = rank;
@@ -331,8 +608,12 @@ mod statistical_tests {
         }
 
         let split_points = [100.0, 300.0, 500.0, 700.0, 900.0];
-        let pmf = sketch.pmf(&split_points, SearchCriteria::Inclusive).expect("Operation should succeed");
-        let cdf = sketch.cdf(&split_points, SearchCriteria::Inclusive).expect("Operation should succeed");
+        let pmf = sketch
+            .pmf(&split_points, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
+        let cdf = sketch
+            .cdf(&split_points, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
 
         // PMF should sum to 1.0
         let pmf_sum: f64 = pmf.iter().sum();
@@ -347,6 +628,43 @@ mod statistical_tests {
 
         // Last CDF value should be 1.0
         assert_relative_eq!(cdf[cdf.len() - 1], 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_rank_matches_sorted_view() {
+        // sketch.rank(item, criteria) is documented to return the same value
+        // as sketch.sorted_view().rank_no_interpolation(item, criteria). Keep
+        // that contract pinned so either path can be re-wired without silent
+        // drift.
+        for &n in &[100u64, 10_000] {
+            for accuracy in [RankAccuracy::HighRank, RankAccuracy::LowRank] {
+                let mut sketch: ReqSketch<f64> = ReqSketch::builder()
+                    .rank_accuracy(accuracy)
+                    .build()
+                    .expect("builder");
+                for i in 0..n {
+                    sketch.update(i as f64);
+                }
+
+                let probes: Vec<f64> = (0..11).map(|i| i as f64 * (n - 1) as f64 / 10.0).collect();
+
+                for criteria in [SearchCriteria::Inclusive, SearchCriteria::Exclusive] {
+                    for &v in &probes {
+                        let direct = sketch.rank(&v, criteria).expect("rank");
+                        let via_view = sketch
+                            .sorted_view()
+                            .expect("sorted_view")
+                            .rank_no_interpolation(&v, criteria)
+                            .expect("rank_no_interpolation");
+                        assert_eq!(
+                            direct, via_view,
+                            "rank/sorted_view disagree at n={}, accuracy={:?}, criteria={:?}, v={}",
+                            n, accuracy, criteria, v
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -552,10 +870,16 @@ mod stress_tests {
         assert_eq!(sketch.max_item(), Some(&((n - 1) as f64)));
 
         // Verify quantiles are reasonable
-        let median = sketch.quantile(0.5, SearchCriteria::Inclusive).expect("Operation should succeed");
+        let median = sketch
+            .quantile(0.5, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
         let expected_median = (n / 2) as f64;
         let relative_error = (median - expected_median).abs() / expected_median;
-        assert!(relative_error < 0.01, "Large dataset median error too high: {}", relative_error);
+        assert!(
+            relative_error < 0.01,
+            "Large dataset median error too high: {}",
+            relative_error
+        );
     }
 
     #[test]
@@ -568,7 +892,9 @@ mod stress_tests {
             for i in 0..100 {
                 batch_sketch.update((batch * 100 + i) as f64);
             }
-            main_sketch.merge(&batch_sketch).expect("Operation should succeed");
+            main_sketch
+                .merge(&batch_sketch)
+                .expect("Operation should succeed");
         }
 
         assert_eq!(main_sketch.len(), 10_000);
@@ -577,11 +903,17 @@ mod stress_tests {
 
         // Verify median is approximately correct
         // Based on C++ reference, should be much more accurate than 30%
-        let median = main_sketch.quantile(0.5, SearchCriteria::Inclusive).expect("Operation should succeed");
+        let median = main_sketch
+            .quantile(0.5, SearchCriteria::Inclusive)
+            .expect("Operation should succeed");
         let expected_median = 4999.5; // True median of 0..9999
         let tolerance = 500.0; // Within 5% for k=12 after many merges
-        assert!((median - expected_median).abs() < tolerance,
-                "Median after many merges: {}, expected: {}, actual error: {}",
-                median, expected_median, (median - expected_median).abs());
+        assert!(
+            (median - expected_median).abs() < tolerance,
+            "Median after many merges: {}, expected: {}, actual error: {}",
+            median,
+            expected_median,
+            (median - expected_median).abs()
+        );
     }
 }

@@ -18,7 +18,12 @@ use serde::{Deserialize, Serialize};
 /// by keeping approximately half the items and promoting the rest to the next level.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(bound = "T: Clone + TotalOrd + PartialEq + serde::Serialize + serde::de::DeserializeOwned"))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        bound = "T: Clone + TotalOrd + PartialEq + serde::Serialize + serde::de::DeserializeOwned"
+    )
+)]
 pub struct Compactor<T> {
     /// Current items in the compactor
     items: Vec<T>,
@@ -41,7 +46,7 @@ pub struct Compactor<T> {
     rank_accuracy: RankAccuracy,
     /// Raw section size (may be fractional)
     section_size_raw: f32,
-    /// Random bit for compaction 
+    /// Random bit for compaction
     coin: bool,
 }
 
@@ -140,7 +145,8 @@ where
         let total = self.items.len() + items.len();
         self.scratch_buffer.clear();
         if self.scratch_buffer.capacity() < total {
-            self.scratch_buffer.reserve(total - self.scratch_buffer.capacity());
+            self.scratch_buffer
+                .reserve(total - self.scratch_buffer.capacity());
         }
 
         let (mut i, mut j) = (0usize, 0usize);
@@ -194,11 +200,13 @@ where
         self.sort();
 
         // Calculate sections to compact based on state
-        let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
+        let secs_to_compact =
+            ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
         let compaction_range = self.compute_compaction_range(secs_to_compact);
 
         // Must have at least 2 items to compact
-        if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
+        if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2
+        {
             out.clear();
             return;
         }
@@ -255,7 +263,6 @@ where
         1u64 << self.lg_weight
     }
 
-
     /// Returns the current state for debugging.
     #[cfg(test)]
     pub fn state(&self) -> u64 {
@@ -289,12 +296,11 @@ where
     #[inline(always)]
     fn compute_compaction_range(&self, secs_to_compact: u8) -> (usize, usize) {
         let nom_capacity = self.nominal_capacity() as usize;
-        let mut non_compact = nom_capacity / 2 + (self.num_sections - secs_to_compact) as usize * self.section_size as usize;
+        let mut non_compact = nom_capacity / 2
+            + (self.num_sections - secs_to_compact) as usize * self.section_size as usize;
 
         // if (((num_items_ - non_compact) & 1) == 1) ++non_compact;
-        if self.items.len() >= non_compact
-            && ((self.items.len() - non_compact) & 1) == 1
-        {
+        if self.items.len() >= non_compact && ((self.items.len() - non_compact) & 1) == 1 {
             non_compact += 1;
         }
 
@@ -325,7 +331,6 @@ where
         (low, high)
     }
 
-
     /// Computes the weight contribution of this compactor for rank calculation.
     ///
     /// # Arguments
@@ -335,7 +340,7 @@ where
     /// # Returns
     /// The weight contributed by this compactor (number of items * 2^lg_weight)
     pub fn compute_weight(&mut self, item: &T, inclusive: bool) -> u64 {
-        // Ensure items are sorted for binary search 
+        // Ensure items are sorted for binary search
         if !self.is_sorted {
             self.sort();
         }
@@ -370,11 +375,13 @@ where
         self.sort();
 
         // Calculate sections to compact based on state
-        let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
+        let secs_to_compact =
+            ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
         let compaction_range = self.compute_compaction_range(secs_to_compact);
 
         // Must have at least 2 items to compact
-        if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
+        if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2
+        {
             out.clear();
             return;
         }
@@ -426,7 +433,8 @@ where
         let total = self.items.len() + items.len();
         self.scratch_buffer.clear();
         if self.scratch_buffer.capacity() < total {
-            self.scratch_buffer.reserve(total - self.scratch_buffer.capacity());
+            self.scratch_buffer
+                .reserve(total - self.scratch_buffer.capacity());
         }
 
         let (mut i, mut j) = (0usize, 0usize);
@@ -457,7 +465,6 @@ where
         self.is_sorted = true;
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -71,7 +71,6 @@ where
         self
     }
 
-
     /// Builds the REQ sketch with the configured parameters.
     pub fn build(self) -> Result<ReqSketch<T>> {
         Ok(ReqSketch {
@@ -97,7 +96,6 @@ where
     pub fn get_rank_accuracy(&self) -> RankAccuracy {
         self.rank_accuracy
     }
-
 }
 
 impl<T> Default for ReqSketchBuilder<T>

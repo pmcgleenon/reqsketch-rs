@@ -1,10 +1,10 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use std::hint::black_box;
-use reqsketch::{ReqSketch, SearchCriteria};
 use rand::prelude::*;
+use reqsketch::{ReqSketch, SearchCriteria};
+use std::hint::black_box;
 
-/// Core benchmark suite for REQ sketch - essential measurements only
-///
+// Core benchmark suite for REQ sketch - essential measurements only
+
 // ========== 1. INSERTION THROUGHPUT ==========
 
 fn bench_insertion_throughput(c: &mut Criterion) {
@@ -27,7 +27,7 @@ fn bench_insertion_throughput(c: &mut Criterion) {
 
                     black_box(sketch)
                 });
-            }
+            },
         );
     }
 
@@ -58,7 +58,7 @@ fn bench_query_latency(c: &mut Criterion) {
                     let result = sketch.quantile(black_box(quantile), SearchCriteria::Inclusive);
                     black_box(result)
                 });
-            }
+            },
         );
     }
 
@@ -71,23 +71,19 @@ fn bench_memory_efficiency(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory_efficiency");
 
     for &n in &[10_000, 100_000, 1_000_000] {
-        group.bench_with_input(
-            BenchmarkId::new("compression_ratio", n),
-            &n,
-            |b, &n| {
-                b.iter(|| {
-                    let mut sketch = ReqSketch::new();
-                    let mut rng = StdRng::seed_from_u64(42);
+        group.bench_with_input(BenchmarkId::new("compression_ratio", n), &n, |b, &n| {
+            b.iter(|| {
+                let mut sketch = ReqSketch::new();
+                let mut rng = StdRng::seed_from_u64(42);
 
-                    for _ in 0..n {
-                        sketch.update(rng.random_range(0.0..1000000.0));
-                    }
+                for _ in 0..n {
+                    sketch.update(rng.random_range(0.0..1000000.0));
+                }
 
-                    let compression_ratio = n as f64 / sketch.num_retained() as f64;
-                    black_box((sketch.num_retained(), compression_ratio))
-                });
-            }
-        );
+                let compression_ratio = n as f64 / sketch.num_retained() as f64;
+                black_box((sketch.num_retained(), compression_ratio))
+            });
+        });
     }
 
     group.finish();
@@ -108,23 +104,19 @@ fn bench_scaling_performance(c: &mut Criterion) {
 
     for (name, n) in scales {
         group.throughput(Throughput::Elements(n));
-        group.bench_with_input(
-            BenchmarkId::new("throughput", name),
-            &n,
-            |b, &n| {
-                b.iter(|| {
-                    let mut sketch = ReqSketch::new();
-                    let mut rng = StdRng::seed_from_u64(42);
+        group.bench_with_input(BenchmarkId::new("throughput", name), &n, |b, &n| {
+            b.iter(|| {
+                let mut sketch = ReqSketch::new();
+                let mut rng = StdRng::seed_from_u64(42);
 
-                    for _ in 0..n {
-                        let value: f64 = rng.random_range(0.0..1000000.0);
-                        sketch.update(black_box(value));
-                    }
+                for _ in 0..n {
+                    let value: f64 = rng.random_range(0.0..1000000.0);
+                    sketch.update(black_box(value));
+                }
 
-                    black_box(sketch)
-                });
-            }
-        );
+                black_box(sketch)
+            });
+        });
     }
 
     group.finish();
@@ -137,43 +129,38 @@ fn bench_statistical_accuracy(c: &mut Criterion) {
     group.sample_size(20);
 
     for &n in &[100_000, 1_000_000] {
-        group.bench_with_input(
-            BenchmarkId::new("sigma_compliance", n),
-            &n,
-            |b, &n| {
-                b.iter(|| {
-                    let mut sketch = ReqSketch::new();
+        group.bench_with_input(BenchmarkId::new("sigma_compliance", n), &n, |b, &n| {
+            b.iter(|| {
+                let mut sketch = ReqSketch::new();
 
-                    // Insert sequential data for predictable accuracy testing
-                    for i in 0..n {
-                        sketch.update(i as f64);
+                // Insert sequential data for predictable accuracy testing
+                for i in 0..n {
+                    sketch.update(i as f64);
+                }
+
+                // Test accuracy at critical quantiles. The REQ sketch bounds
+                // rank error by O(1/k) (with small log factors) independent of
+                // n, so use 3/k as a generous sanity tolerance rather than a
+                // sampling-style sqrt(k/n) bound.
+                let test_ranks = vec![0.9, 0.95, 0.99];
+                let mut compliance_results = Vec::new();
+                let tolerance = 3.0 / sketch.k() as f64;
+
+                for &rank in &test_ranks {
+                    let true_quantile = rank * (n - 1) as f64;
+
+                    if let Ok(estimated_rank) =
+                        sketch.rank(&true_quantile, SearchCriteria::Inclusive)
+                    {
+                        let error = estimated_rank - rank;
+                        let in_bounds = error.abs() <= tolerance;
+                        compliance_results.push((rank, in_bounds, error));
                     }
+                }
 
-                    // Test 3-sigma compliance at critical quantiles
-                    let test_ranks = vec![0.9, 0.95, 0.99];
-                    let mut compliance_results = Vec::new();
-
-                    for &rank in &test_ranks {
-                        let true_quantile = rank * (n - 1) as f64;
-
-                        if let Ok(estimated_rank) = sketch.rank(&true_quantile, SearchCriteria::Inclusive) {
-                            // Calculate 3-sigma bounds
-                            let k = sketch.k() as f64;
-                            let n_f = n as f64;
-                            let sigma = (k / (2.0 * n_f)).sqrt();
-                            let lower_bound = rank - 3.0 * sigma;
-                            let upper_bound = rank + 3.0 * sigma;
-
-                            let in_bounds = estimated_rank >= lower_bound && estimated_rank <= upper_bound;
-                            let error = estimated_rank - rank;
-                            compliance_results.push((rank, in_bounds, error));
-                        }
-                    }
-
-                    black_box(compliance_results)
-                });
-            }
-        );
+                black_box(compliance_results)
+            });
+        });
     }
 
     group.finish();
@@ -193,7 +180,11 @@ fn bench_k_parameter_tuning(c: &mut Criterion) {
             &k,
             |b, &k| {
                 b.iter(|| {
-                    let mut sketch = ReqSketch::builder().k(k).expect("Operation should succeed").build().expect("Operation should succeed");
+                    let mut sketch = ReqSketch::builder()
+                        .k(k)
+                        .expect("Operation should succeed")
+                        .build()
+                        .expect("Operation should succeed");
                     let mut rng = StdRng::seed_from_u64(42);
 
                     // Measure insertion performance
@@ -213,7 +204,7 @@ fn bench_k_parameter_tuning(c: &mut Criterion) {
 
                     black_box((k, sketch.num_retained(), compression_ratio, accuracy_score))
                 });
-            }
+            },
         );
     }
 

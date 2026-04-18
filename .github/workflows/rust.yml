@@ -6,24 +6,88 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
-  build:
-
+  fmt:
+    name: rustfmt
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v6
-    - uses: dtolnay/rust-toolchain@stable
-    - name: Install system dependencies
-      run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev
-    - name: Build
-      run: cargo build --verbose
-    - name: Build examples
-      run: cargo build --examples --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: clippy
-      run: cargo clippy --all --tests --all-features --no-deps
-    - name: doc
-      run: cargo test  --doc
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev
+      - run: cargo clippy --all-targets --all-features --no-deps -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }} / ${{ matrix.features }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        features:
+          - default
+          - no-default
+          - all-features
+        include:
+          - features: default
+            flags: ""
+          - features: no-default
+            flags: "--no-default-features"
+          - features: all-features
+            flags: "--all-features"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.features }}
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev
+      - name: Build
+        run: cargo build --verbose ${{ matrix.flags }}
+      - name: Build examples
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo build --examples --verbose ${{ matrix.flags }}
+      - name: Check benches
+        if: matrix.os == 'ubuntu-latest' && matrix.features == 'default'
+        run: cargo check --benches ${{ matrix.flags }}
+      - name: Run tests
+        run: cargo test --verbose ${{ matrix.flags }}
+
+  msrv:
+    name: msrv (1.87.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.87.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev
+      - run: cargo build --all-features --verbose
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --no-deps --all-features

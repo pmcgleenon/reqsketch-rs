@@ -1,4 +1,4 @@
-use reqsketch::{ReqSketch, RankAccuracy, SearchCriteria};
+use reqsketch::{RankAccuracy, ReqSketch, SearchCriteria};
 
 /// Test that critical quantiles have reasonable absolute error OR fall within bounds.
 /// This is a per-rank test, not a pass-rate test — each rank must independently pass.
@@ -18,7 +18,8 @@ fn test_critical_quantiles_2_sigma() {
 
     for &rank in &critical_ranks {
         let true_quantile = rank * (n - 1) as f64;
-        let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive)
+        let estimated_rank = sketch
+            .rank(&true_quantile, SearchCriteria::Inclusive)
             .expect("Operation should succeed");
 
         let lower_bound = sketch.get_rank_lower_bound(rank, 2);
@@ -26,10 +27,16 @@ fn test_critical_quantiles_2_sigma() {
         let within_bounds = estimated_rank >= lower_bound && estimated_rank <= upper_bound;
 
         let rank_error = (estimated_rank - rank).abs();
-        assert!(within_bounds || rank_error < 0.10,
-               "Critical quantile {:.2} fails 2-sigma bounds AND has high absolute error {:.4}. \
+        assert!(
+            within_bounds || rank_error < 0.10,
+            "Critical quantile {:.2} fails 2-sigma bounds AND has high absolute error {:.4}. \
                 Estimated: {:.6}, Bounds: [{:.6}, {:.6}]",
-               rank, rank_error, estimated_rank, lower_bound, upper_bound);
+            rank,
+            rank_error,
+            estimated_rank,
+            lower_bound,
+            upper_bound
+        );
     }
 }
 
@@ -59,9 +66,12 @@ fn test_extreme_quantiles_bounds() {
 
                 let error_pct = (estimated_rank - rank).abs() / rank * 100.0;
 
-                assert!(within_2sigma || error_pct < 10.0,
-                       "Extreme quantile {:.4} fails bounds with unreasonable error {:.1}%",
-                       rank, error_pct);
+                assert!(
+                    within_2sigma || error_pct < 10.0,
+                    "Extreme quantile {:.4} fails bounds with unreasonable error {:.1}%",
+                    rank,
+                    error_pct
+                );
             }
             Err(_) => {
                 // Acceptable for very extreme quantiles outside retained range
@@ -94,7 +104,9 @@ fn test_hra_high_rank_coverage() {
             }
 
             let true_quantile = test_rank * (n - 1) as f64 + (trial as f64 * 0.0001);
-            let estimated_rank = sketch.rank(&true_quantile, SearchCriteria::Inclusive).unwrap();
+            let estimated_rank = sketch
+                .rank(&true_quantile, SearchCriteria::Inclusive)
+                .unwrap();
 
             let lb2 = sketch.get_rank_lower_bound(test_rank, 2);
             let ub2 = sketch.get_rank_upper_bound(test_rank, 2);
@@ -113,14 +125,22 @@ fn test_hra_high_rank_coverage() {
         let coverage_3 = within_3sigma as f64 / trials as f64;
 
         // 3-sigma coverage should be ≥ 2-sigma coverage
-        assert!(coverage_3 >= coverage_2 - 0.05,
+        assert!(
+            coverage_3 >= coverage_2 - 0.05,
             "3-sigma coverage ({:.0}%) should be ≥ 2-sigma coverage ({:.0}%) for rank {}",
-            coverage_3 * 100.0, coverage_2 * 100.0, test_rank);
+            coverage_3 * 100.0,
+            coverage_2 * 100.0,
+            test_rank
+        );
 
         // High ranks in HRA mode should have good coverage
-        assert!(coverage_3 >= 0.70,
+        assert!(
+            coverage_3 >= 0.70,
             "3-sigma coverage {:.0}% too low for HRA high rank {} across {} trials",
-            coverage_3 * 100.0, test_rank, trials);
+            coverage_3 * 100.0,
+            test_rank,
+            trials
+        );
     }
 }
 
@@ -147,16 +167,22 @@ fn test_bounds_hra_vs_lra_structure() {
     // HRA should have tighter bounds near rank 1.0
     let hra_width_99 = sketch_bound_width(&hra_sketch, 0.99, 2);
     let lra_width_99 = sketch_bound_width(&lra_sketch, 0.99, 2);
-    assert!(hra_width_99 <= lra_width_99,
+    assert!(
+        hra_width_99 <= lra_width_99,
         "HRA should have tighter bounds at rank 0.99: HRA={:.6}, LRA={:.6}",
-        hra_width_99, lra_width_99);
+        hra_width_99,
+        lra_width_99
+    );
 
     // LRA should have tighter bounds near rank 0.0
     let hra_width_01 = sketch_bound_width(&hra_sketch, 0.01, 2);
     let lra_width_01 = sketch_bound_width(&lra_sketch, 0.01, 2);
-    assert!(lra_width_01 <= hra_width_01,
+    assert!(
+        lra_width_01 <= hra_width_01,
         "LRA should have tighter bounds at rank 0.01: LRA={:.6}, HRA={:.6}",
-        lra_width_01, hra_width_01);
+        lra_width_01,
+        hra_width_01
+    );
 }
 
 fn sketch_bound_width(sketch: &ReqSketch<f64>, rank: f64, sigma: u8) -> f64 {
