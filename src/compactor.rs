@@ -342,37 +342,11 @@ where
 
         // Perform binary search to find position
         let position = if inclusive {
-            // inclusive: use upper_bound (first position where item < items[pos])
-            // This finds the first position where the item would be placed after all equal items
-            match self.items.binary_search_by(|probe| {
-                probe.total_cmp(item)
-            }) {
-                Ok(pos) => {
-                    // Found exact match, find the last occurrence
-                    let mut end_pos = pos;
-                    while end_pos + 1 < self.items.len() && self.items[end_pos + 1] == *item {
-                        end_pos += 1;
-                    }
-                    end_pos + 1
-                }
-                Err(pos) => pos,
-            }
+            // upper_bound: first position where item < items[pos]
+            self.items.partition_point(|x| x.total_cmp(item).is_le())
         } else {
-            // exclusive: use lower_bound (first position where !(items[pos] < item))
-            // This finds the first position where the item would be placed before all equal items
-            match self.items.binary_search_by(|probe| {
-                probe.total_cmp(item)
-            }) {
-                Ok(pos) => {
-                    // Found exact match, find the first occurrence
-                    let mut start_pos = pos;
-                    while start_pos > 0 && self.items[start_pos - 1] == *item {
-                        start_pos -= 1;
-                    }
-                    start_pos
-                }
-                Err(pos) => pos,
-            }
+            // lower_bound: first position where !(items[pos] < item)
+            self.items.partition_point(|x| x.total_cmp(item).is_lt())
         };
 
         // Return distance (number of items) shifted by lg_weight
