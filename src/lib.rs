@@ -5,7 +5,7 @@
 //! Graham Cormode, Zohar Karnin, Edo Liberty, Justin Thaler, Pavel Veselý.
 //!
 //! And on the C++ implementation in Apache DataSketches
-//! https://github.com/apache/datasketches-cpp
+//! <https://github.com/apache/datasketches-cpp>
 //!
 //! ## Quick Start
 //!
