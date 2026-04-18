@@ -186,25 +186,14 @@ where
             },
         };
 
-        // Find item using binary search 
         let index = match criteria {
             SearchCriteria::Inclusive => {
-                self.cumulative_weights.binary_search(&target_weight)
-                    .unwrap_or_else(|pos| pos)
+                // Equivalent to C++ lower_bound: first index where cumulative_weight >= target
+                self.cumulative_weights.partition_point(|&w| w < target_weight)
             },
             SearchCriteria::Exclusive => {
-                match self.cumulative_weights.binary_search(&target_weight) {
-                    Ok(pos) => {
-                        // Found exact match, find first element > target_weight
-                        let mut next_pos = pos + 1;
-                        while next_pos < self.cumulative_weights.len()
-                              && self.cumulative_weights[next_pos] == target_weight {
-                            next_pos += 1;
-                        }
-                        next_pos
-                    },
-                    Err(pos) => pos, // First element > target_weight
-                }
+                // Equivalent to C++ upper_bound: first index where cumulative_weight > target
+                self.cumulative_weights.partition_point(|&w| w <= target_weight)
             },
         };
 
