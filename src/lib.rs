@@ -247,7 +247,7 @@ where
         self.total_n += 1;
         self.num_retained += 1;
 
-        // Trigger compression when global retained equals global max 
+        // Trigger compression when global retained equals global max
         if self.num_retained == self.max_nom_size {
             self.compress();
         }
@@ -486,6 +486,7 @@ where
 
                 // Merge promoted items into next level
                 if !self.promotion_buf.is_empty() {
+                    self.compactors[h + 1].sort();
                     self.compactors[h + 1].merge_sorted(&self.promotion_buf);
                 }
 
@@ -608,7 +609,7 @@ where
         let fixed = Self::FIXED_RSE_FACTOR / k as f64;
         let lb_rel = rank - num_std_dev as f64 * relative;
         let lb_fix = rank - num_std_dev as f64 * fixed;
-        lb_rel.min(lb_fix).max(0.0)
+        lb_rel.max(lb_fix).max(0.0)
     }
 
     /// Computes the upper bound rank estimate with the specified confidence level.
@@ -620,7 +621,7 @@ where
         let fixed = Self::FIXED_RSE_FACTOR / k as f64;
         let ub_rel = rank + num_std_dev as f64 * relative;
         let ub_fix = rank + num_std_dev as f64 * fixed;
-        ub_rel.max(ub_fix).min(1.0)
+        ub_rel.min(ub_fix).min(1.0)
     }
 
     /// Determines if a rank should be considered exact based on the exact rank threshold.

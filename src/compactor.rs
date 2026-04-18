@@ -190,23 +190,18 @@ where
             return;
         }
 
-        // Calculate sections to compact based on state 
+        // Sort entire buffer (C++ sorts full buffer before compaction)
+        self.sort();
+
+        // Calculate sections to compact based on state
         let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
         let compaction_range = self.compute_compaction_range(secs_to_compact);
-
-        // Sort only the compaction range (avoid sorting the whole level)
-        self.items[compaction_range.0..compaction_range.1]
-            .sort_unstable_by(|a, b| a.total_cmp(b));
-        self.is_sorted = false; // level as a whole might no longer be fully sorted
 
         // Must have at least 2 items to compact
         if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
             out.clear();
             return;
         }
-
-        // Ensure enough sections for growth 
-        self.ensure_enough_sections();
 
         if (self.state & 1) == 1 {
             self.coin = !self.coin; // flip coin for odd states
@@ -232,8 +227,9 @@ where
         }
         self.items.truncate(self.items.len() - removed);
 
-        // Update state
+        // Update state, then ensure enough sections (C++ order)
         self.state += 1;
+        self.ensure_enough_sections();
     }
 
     /// Back-compat wrapper (allocates if used). Prefer `compact_into` for performance.
@@ -324,11 +320,6 @@ where
             return (0, 0); // Signal no compaction needed
         }
 
-        // Ensure minimum section size for meaningful compaction
-        if self.items.len() < 2 * self.section_size as usize {
-            return (0, 0); // Skip compaction if level too small
-        }
-
         (low, high)
     }
 
@@ -399,14 +390,12 @@ where
             return;
         }
 
-        // Calculate sections to compact based on state 
+        // Sort entire buffer (C++ sorts full buffer before compaction)
+        self.sort();
+
+        // Calculate sections to compact based on state
         let secs_to_compact = ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
         let compaction_range = self.compute_compaction_range(secs_to_compact);
-
-        // Sort only the compaction range (avoid sorting the whole level)
-        self.items[compaction_range.0..compaction_range.1]
-            .sort_unstable_by(|a, b| a.total_cmp(b));
-        self.is_sorted = false; // level as a whole might no longer be fully sorted
 
         // Must have at least 2 items to compact
         if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2 {
@@ -414,15 +403,13 @@ where
             return;
         }
 
-        // Ensure enough sections for growth
-        self.ensure_enough_sections();
-
-        // Even/odd choice (same logic you had)
-        let odds = if (self.state & 1) == 1 {
-            (self.state >> 1) & 1 == 0
+        // Coin flip (matches C++ and compact_into logic)
+        if (self.state & 1) == 1 {
+            self.coin = !self.coin;
         } else {
-            ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
-        };
+            self.coin = rand::random::<bool>();
+        }
+        let odds = self.coin;
 
         // Build promoted items directly into output buffer (NO CLONE for Copy types)
         out.clear();
@@ -442,8 +429,9 @@ where
         let new_len = self.items.len() - removed;
         self.items.truncate(new_len);
 
-        // Update state
+        // Update state, then ensure enough sections (C++ order)
         self.state += 1;
+        self.ensure_enough_sections();
     }
 
     /// Fast merge for Copy types - avoids cloning in merge operations
