@@ -431,6 +431,8 @@ where
     /// Resets the sketch to its initial empty state.
     pub fn reset(&mut self) {
         self.total_n = 0;
+        self.num_retained = 0;
+        self.max_nom_size = 0;
         self.min_item = None;
         self.max_item = None;
         self.compactors.clear();
