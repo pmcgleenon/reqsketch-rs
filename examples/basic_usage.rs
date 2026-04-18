@@ -62,12 +62,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Demonstrate different accuracy modes
     println!("Comparing accuracy modes:");
 
-    let high_rank_sketch: ReqSketch<f64> = ReqSketch::builder()
+    let _high_rank_sketch: ReqSketch<f64> = ReqSketch::builder()
         .k(16)?
         .rank_accuracy(RankAccuracy::HighRank)
         .build()?;
 
-    let low_rank_sketch: ReqSketch<f64> = ReqSketch::builder()
+    let _low_rank_sketch: ReqSketch<f64> = ReqSketch::builder()
         .k(16)?
         .rank_accuracy(RankAccuracy::LowRank)
         .build()?;

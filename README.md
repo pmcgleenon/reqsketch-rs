@@ -1,5 +1,18 @@
 # reqsketch-rs 
 
+[![Crates.io][crates-badge]][crates-url]
+[![MIT / Apache 2.0 licensed][license-badge]][license-url]
+[![Build Status][actions-badge]][actions-url]
+
+[crates-badge]: https://img.shields.io/crates/v/reqsketch.svg
+[crates-url]: https://crates.io/crates/reqsketch
+[license-badge]: https://img.shields.io/crates/l/reqsketch.svg
+[license-url]: https://github.com/pmcgleenon/reqsketch-rs/blob/main/LICENSE
+[actions-badge]: https://github.com/pmcgleenon/reqsketch-rs/actions/workflows/rust.yml/badge.svg
+[actions-url]: https://github.com/pmcgleenon/reqsketch-rs/actions?query=workflow%3Arust+branch%3Amain
+
+[📖 Docs](https://docs.rs/reqsketch)
+
 An implementation of the **Relative Error Quantiles (REQ) sketch** algorithm in Rust.
 
 ## Overview
@@ -7,15 +20,6 @@ An implementation of the **Relative Error Quantiles (REQ) sketch** algorithm in 
 REQ sketch is a probabilistic data structure for approximate quantile estimation with relative error guarantees, particularly useful for streaming scenarios where you need to estimate quantiles over large data streams with bounded memory usage.
 
 This implementation is based on the paper ["Relative Error Streaming Quantiles"](https://arxiv.org/abs/2004.01668) by Graham Cormode, Zohar Karnin, Edo Liberty, Justin Thaler, and Pavel Veselý.   A lot of inspiration was taken from the C++ implementation in Apache DataSketches https://datasketches.apache.org/docs/REQ/ReqSketch.html
-
-## Quick Start
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-reqsketch = "0.1"
-```
 
 ### Basic Usage
 

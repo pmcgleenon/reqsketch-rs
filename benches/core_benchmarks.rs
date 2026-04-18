@@ -1,4 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
 use reqsketch::{ReqSketch, SearchCriteria};
 use rand::prelude::*;
 
@@ -20,7 +21,7 @@ fn bench_insertion_throughput(c: &mut Criterion) {
                     let mut rng = StdRng::seed_from_u64(42);
 
                     for _ in 0..batch_size {
-                        let value: f64 = rng.gen_range(0.0..1000000.0);
+                        let value: f64 = rng.random_range(0.0..1000000.0);
                         sketch.update(black_box(value));
                     }
 
@@ -42,7 +43,7 @@ fn bench_query_latency(c: &mut Criterion) {
     let mut sketch = ReqSketch::new();
     let mut rng = StdRng::seed_from_u64(42);
     for _ in 0..100_000 {
-        sketch.update(rng.gen_range(0.0..1000000.0));
+        sketch.update(rng.random_range(0.0..1000000.0));
     }
 
     // Test key quantiles
@@ -79,7 +80,7 @@ fn bench_memory_efficiency(c: &mut Criterion) {
                     let mut rng = StdRng::seed_from_u64(42);
 
                     for _ in 0..n {
-                        sketch.update(rng.gen_range(0.0..1000000.0));
+                        sketch.update(rng.random_range(0.0..1000000.0));
                     }
 
                     let compression_ratio = n as f64 / sketch.num_retained() as f64;
@@ -116,7 +117,7 @@ fn bench_scaling_performance(c: &mut Criterion) {
                     let mut rng = StdRng::seed_from_u64(42);
 
                     for _ in 0..n {
-                        let value: f64 = rng.gen_range(0.0..1000000.0);
+                        let value: f64 = rng.random_range(0.0..1000000.0);
                         sketch.update(black_box(value));
                     }
 
@@ -197,7 +198,7 @@ fn bench_k_parameter_tuning(c: &mut Criterion) {
 
                     // Measure insertion performance
                     for _ in 0..n {
-                        sketch.update(rng.gen_range(0.0..1000000.0));
+                        sketch.update(rng.random_range(0.0..1000000.0));
                     }
 
                     // Measure memory efficiency

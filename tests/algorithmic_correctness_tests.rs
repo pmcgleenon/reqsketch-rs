@@ -4,6 +4,82 @@
 use reqsketch::*;
 
 #[cfg(test)]
+mod capacity_calculation_tests {
+    use super::*;
+
+    #[test]
+    fn test_capacity_calculation_correctness() {
+        let mut sketch = ReqSketch::builder()
+            .k(12).unwrap()
+            .rank_accuracy(RankAccuracy::HighRank)
+            .build().unwrap();
+
+        sketch.update(1.0);
+
+        let level_info = sketch.level_info();
+        assert!(!level_info.is_empty(), "Should have at least one level");
+
+        let (_, _, level0_capacity, _) = level_info[0];
+
+        // Expected capacity for level 0: multiplier=2, sections=3, section_size=12
+        // nominal_capacity = 2 * 3 * 12 = 72
+        assert_eq!(level0_capacity, 72,
+                   "Level 0 capacity should be 72, got {}", level0_capacity);
+    }
+
+    #[test]
+    fn test_item_density_consistency() {
+        let mut sketch = ReqSketch::builder()
+            .k(12).unwrap()
+            .rank_accuracy(RankAccuracy::HighRank)
+            .build().unwrap();
+
+        let stream_size = 2048;
+        for i in 1..=stream_size {
+            sketch.update(i as f32);
+        }
+
+        let level_info = sketch.level_info();
+        let total_retained: u32 = level_info.iter().map(|(_, items, _, _)| items).sum();
+        let total_weighted_items: u64 = level_info.iter().map(|(_, items, _, weight)| *items as u64 * weight).sum();
+
+        // Validate weight conservation
+        assert_eq!(total_weighted_items, stream_size as u64,
+                   "Total weighted items {} should equal stream size {}",
+                   total_weighted_items, stream_size);
+
+        // Validate retention efficiency (should retain much less than original)
+        let retention_ratio = total_retained as f64 / stream_size as f64;
+        assert!(retention_ratio < 0.3,
+                "Retention ratio {:.3} should be < 0.3 for efficient compression",
+                retention_ratio);
+    }
+
+    #[test]
+    fn test_level_structure_matches_cpp() {
+        let mut sketch = ReqSketch::builder()
+            .k(12).unwrap()
+            .rank_accuracy(RankAccuracy::HighRank)
+            .build().unwrap();
+
+        for i in 1..=2048 {
+            sketch.update(i as f32);
+        }
+
+        let level_info = sketch.level_info();
+        let num_levels = level_info.len();
+        let total_retained = sketch.num_retained();
+
+        // C++ reference with same parameters: 5 levels, ~372 retained
+        assert!((4..=7).contains(&num_levels),
+                "Expected 4-7 levels, got {}", num_levels);
+
+        assert!((301..500).contains(&total_retained),
+                "Expected ~300-500 retained, got {}", total_retained);
+    }
+}
+
+#[cfg(test)]
 mod global_capacity_tests {
     use super::*;
 
@@ -71,29 +147,30 @@ mod global_capacity_tests {
 
         for i in 0..5000 {
             let retained_before = sketch.total_retained_items();
+            let capacity_before = sketch.total_nominal_capacity();
 
             sketch.update(i as f64);
 
             let retained_after = sketch.total_retained_items();
-            let total_capacity = sketch.total_nominal_capacity();
 
             // If retained count decreased, compaction occurred
             if retained_after < retained_before {
-                compaction_events.push((i, retained_before, retained_after, total_capacity));
+                compaction_events.push((i, retained_before, capacity_before));
             }
         }
 
         // Ensure capacity values in recorded events are valid
-        assert!(compaction_events.iter().all(|&(_step, _before, _after, cap)| cap > 0),
+        assert!(compaction_events.iter().all(|&(_step, _before, cap)| cap > 0),
             "All recorded compaction events should report positive capacity");
 
-        // Verify compaction only happens when approaching capacity limits
-        for (step, before, _after, capacity) in compaction_events {
-            let utilization = before as f32 / capacity as f32;
-                 // Compaction can occur when approaching capacity limits. Verified below.
-                 assert!(utilization >= 0.5, // More lenient threshold
-                     "Compaction occurred too early at step {}: only {}% capacity utilization",
-                     step, utilization * 100.0);
+        // C++ triggers compaction when num_retained == max_nom_size
+        // Compaction causes capacity to grow (ensure_enough_sections), so we check capacity BEFORE
+        for (step, before, capacity_before) in compaction_events {
+            let utilization = before as f32 / capacity_before as f32;
+            // With C++ logic, compaction triggers when retained equals capacity
+            assert!(utilization >= 0.9, // Should be very close to 100%
+                "Compaction occurred too early at step {}: only {:.1}% capacity utilization (expected ~100%)",
+                step, utilization * 100.0);
         }
     }
 }
