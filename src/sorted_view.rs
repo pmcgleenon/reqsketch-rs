@@ -51,12 +51,9 @@ where
         for (item, weight) in weighted_items {
             if let Some(last) = items.last() {
                 if matches!(last.total_cmp(&item), std::cmp::Ordering::Equal) {
-                    // Same item — merge weight into existing entry
                     cumulative_weight += weight;
-                    // Update the last cumulative weight in place
-                    if let Some(last_cw) = cumulative_weights.last_mut() {
-                        *last_cw = cumulative_weight;
-                    }
+                    let last_idx = cumulative_weights.len() - 1;
+                    cumulative_weights[last_idx] = cumulative_weight;
                     continue;
                 }
             }
