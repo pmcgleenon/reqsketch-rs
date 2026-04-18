@@ -371,7 +371,7 @@ mod reference_tests {
             rmax
         );
         assert!(
-            (rmid - 0.5).abs() <= 0.15,
+            (rmid - 0.5).abs() <= 0.01,
             "Rank of {} should be ~0.5, got {} (error: {:.1}%)",
             n as f32 / 2.0,
             rmid,
@@ -409,8 +409,8 @@ mod reference_tests {
         assert_eq!(sketch1.min_item(), Some(&0.0));
         assert_eq!(sketch1.max_item(), Some(&999.0));
 
-        // Test quantiles with tolerance appropriate for k=40
-        // REQ sketches with k=40 provide accuracy around 10-15% for extreme quantiles
+        // k=40 with n=1000 is well within exact mode, so quantile accuracy
+        // should match the C++ reference (~1%).
         let q25 = sketch1
             .quantile(0.25, SearchCriteria::Inclusive)
             .expect("Operation should succeed");
@@ -431,23 +431,23 @@ mod reference_tests {
         let r50_error = (r50 - 0.5).abs() / 0.5;
 
         assert!(
-            q25_error <= 0.15,
-            "25th percentile error too high: {} > 15%",
+            q25_error <= 0.03,
+            "25th percentile error too high: {} > 3%",
             q25_error * 100.0
         );
         assert!(
-            q50_error <= 0.05,
-            "50th percentile error too high: {} > 5%",
+            q50_error <= 0.03,
+            "50th percentile error too high: {} > 3%",
             q50_error * 100.0
         );
         assert!(
-            q75_error <= 0.15,
-            "75th percentile error too high: {} > 15%",
+            q75_error <= 0.03,
+            "75th percentile error too high: {} > 3%",
             q75_error * 100.0
         );
         assert!(
-            r50_error <= 0.05,
-            "Rank error too high: {} > 5%",
+            r50_error <= 0.03,
+            "Rank error too high: {} > 3%",
             r50_error * 100.0
         );
     }
