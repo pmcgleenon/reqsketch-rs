@@ -485,6 +485,7 @@ where
                 if level + 1 >= self.compactors.len() {
                     self.grow();
                 }
+                self.compactors[level + 1].sort();
                 self.compactors[level + 1].merge_sorted(&self.promotion_buf);
             }
         }
