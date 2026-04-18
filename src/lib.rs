@@ -304,6 +304,10 @@ where
             self.compactors[i].merge(other_compactor)?;
         }
 
+        // Update counters after merging items
+        self.update_num_retained();
+        self.update_max_nom_size();
+
         // Compress if needed
         if self.needs_compression() {
             self.compress();
