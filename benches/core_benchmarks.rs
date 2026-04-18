@@ -138,9 +138,13 @@ fn bench_statistical_accuracy(c: &mut Criterion) {
                     sketch.update(i as f64);
                 }
 
-                // Test 3-sigma compliance at critical quantiles
+                // Test accuracy at critical quantiles. The REQ sketch bounds
+                // rank error by O(1/k) (with small log factors) independent of
+                // n, so use 3/k as a generous sanity tolerance rather than a
+                // sampling-style sqrt(k/n) bound.
                 let test_ranks = vec![0.9, 0.95, 0.99];
                 let mut compliance_results = Vec::new();
+                let tolerance = 3.0 / sketch.k() as f64;
 
                 for &rank in &test_ranks {
                     let true_quantile = rank * (n - 1) as f64;
@@ -148,16 +152,8 @@ fn bench_statistical_accuracy(c: &mut Criterion) {
                     if let Ok(estimated_rank) =
                         sketch.rank(&true_quantile, SearchCriteria::Inclusive)
                     {
-                        // Calculate 3-sigma bounds
-                        let k = sketch.k() as f64;
-                        let n_f = n as f64;
-                        let sigma = (k / (2.0 * n_f)).sqrt();
-                        let lower_bound = rank - 3.0 * sigma;
-                        let upper_bound = rank + 3.0 * sigma;
-
-                        let in_bounds =
-                            estimated_rank >= lower_bound && estimated_rank <= upper_bound;
                         let error = estimated_rank - rank;
+                        let in_bounds = error.abs() <= tolerance;
                         compliance_results.push((rank, in_bounds, error));
                     }
                 }
