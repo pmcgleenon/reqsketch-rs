@@ -631,6 +631,43 @@ mod statistical_tests {
     }
 
     #[test]
+    fn test_rank_matches_sorted_view() {
+        // sketch.rank(item, criteria) is documented to return the same value
+        // as sketch.sorted_view().rank_no_interpolation(item, criteria). Keep
+        // that contract pinned so either path can be re-wired without silent
+        // drift.
+        for &n in &[100u64, 10_000] {
+            for accuracy in [RankAccuracy::HighRank, RankAccuracy::LowRank] {
+                let mut sketch: ReqSketch<f64> = ReqSketch::builder()
+                    .rank_accuracy(accuracy)
+                    .build()
+                    .expect("builder");
+                for i in 0..n {
+                    sketch.update(i as f64);
+                }
+
+                let probes: Vec<f64> = (0..11).map(|i| i as f64 * (n - 1) as f64 / 10.0).collect();
+
+                for criteria in [SearchCriteria::Inclusive, SearchCriteria::Exclusive] {
+                    for &v in &probes {
+                        let direct = sketch.rank(&v, criteria).expect("rank");
+                        let via_view = sketch
+                            .sorted_view()
+                            .expect("sorted_view")
+                            .rank_no_interpolation(&v, criteria)
+                            .expect("rank_no_interpolation");
+                        assert_eq!(
+                            direct, via_view,
+                            "rank/sorted_view disagree at n={}, accuracy={:?}, criteria={:?}, v={}",
+                            n, accuracy, criteria, v
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_iterator_weight_consistency() {
         let mut sketch = ReqSketch::new();
         for i in 0..1000 {
