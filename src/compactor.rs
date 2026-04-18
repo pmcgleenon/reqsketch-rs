@@ -232,8 +232,9 @@ where
         }
         self.items.truncate(self.items.len() - removed);
 
-        // Update state
+        // Update state, then ensure enough sections (C++ order)
         self.state += 1;
+        self.ensure_enough_sections();
     }
 
     /// Back-compat wrapper (allocates if used). Prefer `compact_into` for performance.
@@ -439,8 +440,9 @@ where
         let new_len = self.items.len() - removed;
         self.items.truncate(new_len);
 
-        // Update state
+        // Update state, then ensure enough sections (C++ order)
         self.state += 1;
+        self.ensure_enough_sections();
     }
 
     /// Fast merge for Copy types - avoids cloning in merge operations
