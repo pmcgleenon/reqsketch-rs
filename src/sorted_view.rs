@@ -44,13 +44,13 @@ where
         // Sort by item value - use unstable sort for better performance
         weighted_items.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
 
-        let mut items = Vec::with_capacity(weighted_items.len());
+        let mut items: Vec<T> = Vec::with_capacity(weighted_items.len());
         let mut cumulative_weights = Vec::with_capacity(weighted_items.len());
         let mut cumulative_weight = 0u64;
 
         for (item, weight) in weighted_items {
             if let Some(last) = items.last() {
-                if last.total_cmp(&item) == std::cmp::Ordering::Equal {
+                if matches!(last.total_cmp(&item), std::cmp::Ordering::Equal) {
                     // Same item — merge weight into existing entry
                     cumulative_weight += weight;
                     // Update the last cumulative weight in place

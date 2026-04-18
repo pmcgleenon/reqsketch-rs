@@ -292,10 +292,10 @@ where
         let mut non_compact = nom_capacity / 2 + (self.num_sections - secs_to_compact) as usize * self.section_size as usize;
 
         // if (((num_items_ - non_compact) & 1) == 1) ++non_compact;
-        if self.items.len() >= non_compact {
-            if ((self.items.len() - non_compact) & 1) == 1 {
-                non_compact += 1;
-            }
+        if self.items.len() >= non_compact
+            && ((self.items.len() - non_compact) & 1) == 1
+        {
+            non_compact += 1;
         }
 
         let (low, high) = match self.rank_accuracy {
