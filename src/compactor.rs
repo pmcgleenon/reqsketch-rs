@@ -413,12 +413,13 @@ where
             return;
         }
 
-        // Even/odd choice (same logic you had)
-        let odds = if (self.state & 1) == 1 {
-            (self.state >> 1) & 1 == 0
+        // Coin flip (matches C++ and compact_into logic)
+        if (self.state & 1) == 1 {
+            self.coin = !self.coin;
         } else {
-            ((self.state >> 1) ^ (self.state >> 3) ^ (self.state >> 7)) & 1 == 1
-        };
+            self.coin = rand::random::<bool>();
+        }
+        let odds = self.coin;
 
         // Build promoted items directly into output buffer (NO CLONE for Copy types)
         out.clear();
