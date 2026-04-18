@@ -271,7 +271,7 @@ mod statistical_tests {
     #[test]
     fn test_weight_conservation() {
         // Deterministic property: total weight must equal n after any number of updates
-        for &n in &[10, 100, 1_000, 10_000] {
+        for &n in &[10u64, 100, 1_000, 10_000] {
             let mut sketch = ReqSketch::new();
             for i in 0..n {
                 sketch.update(i as f64);
