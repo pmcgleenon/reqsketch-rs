@@ -39,7 +39,9 @@ impl fmt::Display for ReqError {
         match self {
             ReqError::EmptySketch => write!(f, "Cannot perform operation on empty sketch"),
             ReqError::InvalidK(k) => write!(f, "Invalid k parameter: {}. Must be even and >= 4", k),
-            ReqError::InvalidRank(rank) => write!(f, "Invalid rank: {}. Must be in range [0.0, 1.0]", rank),
+            ReqError::InvalidRank(rank) => {
+                write!(f, "Invalid rank: {}. Must be in range [0.0, 1.0]", rank)
+            }
             ReqError::IncompatibleSketches(msg) => write!(f, "Incompatible sketches: {}", msg),
             ReqError::CacheInvalid => write!(f, "Internal cache is invalid"),
             ReqError::InvalidSplitPoints(msg) => write!(f, "Invalid split points: {}", msg),

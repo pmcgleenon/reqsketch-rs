@@ -1,6 +1,6 @@
 //! Basic usage example for REQ sketch
 
-use reqsketch::{ReqSketch, SearchCriteria, RankAccuracy};
+use reqsketch::{RankAccuracy, ReqSketch, SearchCriteria};
 // use std::io::{self, Write};  // Not needed for this example
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,9 +54,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Intervals and their probabilities:");
     println!("    (-∞, {:.0}]: {:.4}", split_points[0], pmf[0]);
     for i in 1..split_points.len() {
-        println!("    ({:.0}, {:.0}]: {:.4}", split_points[i-1], split_points[i], pmf[i]);
+        println!(
+            "    ({:.0}, {:.0}]: {:.4}",
+            split_points[i - 1],
+            split_points[i],
+            pmf[i]
+        );
     }
-    println!("    ({:.0}, ∞): {:.4}", split_points[split_points.len()-1], pmf[pmf.len()-1]);
+    println!(
+        "    ({:.0}, ∞): {:.4}",
+        split_points[split_points.len() - 1],
+        pmf[pmf.len() - 1]
+    );
     println!();
 
     // Demonstrate different accuracy modes
@@ -87,17 +96,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sketch2.update((i + 1000) as f64);
     }
 
-    println!("  Sketch 1: {} items, median = {:.2}",
-             sketch1.len(),
-             sketch1.quantile(0.5, SearchCriteria::Inclusive)?);
-    println!("  Sketch 2: {} items, median = {:.2}",
-             sketch2.len(),
-             sketch2.quantile(0.5, SearchCriteria::Inclusive)?);
+    println!(
+        "  Sketch 1: {} items, median = {:.2}",
+        sketch1.len(),
+        sketch1.quantile(0.5, SearchCriteria::Inclusive)?
+    );
+    println!(
+        "  Sketch 2: {} items, median = {:.2}",
+        sketch2.len(),
+        sketch2.quantile(0.5, SearchCriteria::Inclusive)?
+    );
 
     sketch1.merge(&sketch2)?;
-    println!("  Merged sketch: {} items, median = {:.2}",
-             sketch1.len(),
-             sketch1.quantile(0.5, SearchCriteria::Inclusive)?);
+    println!(
+        "  Merged sketch: {} items, median = {:.2}",
+        sketch1.len(),
+        sketch1.quantile(0.5, SearchCriteria::Inclusive)?
+    );
 
     println!("\nDemo completed successfully!");
     Ok(())

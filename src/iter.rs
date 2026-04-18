@@ -107,7 +107,9 @@ where
     type Item = (T, u64);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.items_iter.next().map(|item| (item.clone(), self.weight))
+        self.items_iter
+            .next()
+            .map(|item| (item.clone(), self.weight))
     }
 }
 

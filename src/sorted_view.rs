@@ -11,7 +11,12 @@ use serde::{Deserialize, Serialize};
 /// by maintaining items in sorted order with precomputed cumulative weights.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(bound = "T: Clone + TotalOrd + PartialEq + serde::Serialize + serde::de::DeserializeOwned"))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        bound = "T: Clone + TotalOrd + PartialEq + serde::Serialize + serde::de::DeserializeOwned"
+    )
+)]
 pub struct SortedView<T> {
     /// Items in sorted order
     items: Vec<T>,
@@ -20,7 +25,6 @@ pub struct SortedView<T> {
     /// Total weight of all items
     total_weight: u64,
 }
-
 
 impl<T> SortedView<T>
 where
@@ -84,7 +88,6 @@ where
         self.total_weight
     }
 
-
     /// Returns the approximate rank of the given item with interpolation for numeric types.
     ///
     /// # Arguments
@@ -121,7 +124,6 @@ where
         }
     }
 
-
     /// Returns the approximate quantile for the given normalized rank.
     ///
     /// # Arguments
@@ -153,23 +155,21 @@ where
         // Convert rank to target cumulative weight
         // uint64_t weight = static_cast<uint64_t>(inclusive ? std::ceil(rank * total_weight_) : rank * total_weight_);
         let target_weight = match criteria {
-            SearchCriteria::Inclusive => {
-                (rank * self.total_weight as f64).ceil() as u64
-            },
-            SearchCriteria::Exclusive => {
-                (rank * self.total_weight as f64) as u64
-            },
+            SearchCriteria::Inclusive => (rank * self.total_weight as f64).ceil() as u64,
+            SearchCriteria::Exclusive => (rank * self.total_weight as f64) as u64,
         };
 
         let index = match criteria {
             SearchCriteria::Inclusive => {
                 // Equivalent to C++ lower_bound: first index where cumulative_weight >= target
-                self.cumulative_weights.partition_point(|&w| w < target_weight)
-            },
+                self.cumulative_weights
+                    .partition_point(|&w| w < target_weight)
+            }
             SearchCriteria::Exclusive => {
                 // Equivalent to C++ upper_bound: first index where cumulative_weight > target
-                self.cumulative_weights.partition_point(|&w| w <= target_weight)
-            },
+                self.cumulative_weights
+                    .partition_point(|&w| w <= target_weight)
+            }
         };
 
         if index >= self.items.len() {
@@ -243,7 +243,9 @@ where
 
     /// Returns an iterator over (item, cumulative_weight) pairs.
     pub fn iter_with_weights(&self) -> impl Iterator<Item = (&T, u64)> {
-        self.items.iter().zip(self.cumulative_weights.iter().copied())
+        self.items
+            .iter()
+            .zip(self.cumulative_weights.iter().copied())
     }
 
     // Private helper methods
@@ -266,9 +268,7 @@ mod tests {
     use super::*;
 
     fn create_test_view() -> SortedView<i32> {
-        let weighted_items = vec![
-            (1, 1), (3, 1), (5, 1), (7, 1), (9, 1)
-        ];
+        let weighted_items = vec![(1, 1), (3, 1), (5, 1), (7, 1), (9, 1)];
         SortedView::new(weighted_items)
     }
 
@@ -358,7 +358,9 @@ mod tests {
         assert_eq!(view.total_weight(), 0);
 
         // Operations on empty view should return errors
-        assert!(view.rank_no_interpolation(&5, SearchCriteria::Inclusive).is_err());
+        assert!(view
+            .rank_no_interpolation(&5, SearchCriteria::Inclusive)
+            .is_err());
         assert!(view.quantile(0.5, SearchCriteria::Inclusive).is_err());
     }
 }

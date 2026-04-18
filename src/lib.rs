@@ -36,8 +36,8 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 
-use std::fmt;
 use std::cmp::Ordering;
+use std::fmt;
 
 pub mod builder;
 pub mod compactor;
@@ -98,7 +98,6 @@ impl ReqKey for i32 {}
 impl ReqKey for u64 {}
 impl ReqKey for u32 {}
 
-
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -119,10 +118,8 @@ pub enum RankAccuracy {
     LowRank,
 }
 
-
 /// Search criteria for quantile/rank operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SearchCriteria {
     /// Include the weight of the search item in the result
     #[default]
@@ -131,7 +128,6 @@ pub enum SearchCriteria {
     Exclusive,
 }
 
-
 /// A Relative Error Quantiles sketch for approximate quantile estimation.
 ///
 /// The REQ sketch provides approximate quantile estimation with relative error guarantees.
@@ -139,7 +135,12 @@ pub enum SearchCriteria {
 /// over large data streams with bounded memory usage.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(bound = "T: Clone + TotalOrd + PartialEq + serde::Serialize + serde::de::DeserializeOwned"))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        bound = "T: Clone + TotalOrd + PartialEq + serde::Serialize + serde::de::DeserializeOwned"
+    )
+)]
 pub struct ReqSketch<T> {
     k: u16,
     rank_accuracy: RankAccuracy,
@@ -282,7 +283,9 @@ where
         if let Some(other_min) = &other.min_item {
             match &self.min_item {
                 None => self.min_item = Some(other_min.clone()),
-                Some(min) if other_min.total_cmp(min).is_lt() => self.min_item = Some(other_min.clone()),
+                Some(min) if other_min.total_cmp(min).is_lt() => {
+                    self.min_item = Some(other_min.clone())
+                }
                 _ => {}
             }
         }
@@ -290,7 +293,9 @@ where
         if let Some(other_max) = &other.max_item {
             match &self.max_item {
                 None => self.max_item = Some(other_max.clone()),
-                Some(max) if other_max.total_cmp(max).is_gt() => self.max_item = Some(other_max.clone()),
+                Some(max) if other_max.total_cmp(max).is_gt() => {
+                    self.max_item = Some(other_max.clone())
+                }
                 _ => {}
             }
         }
@@ -352,7 +357,6 @@ where
     pub fn rank_inclusive(&mut self, item: &T) -> Result<f64> {
         self.rank(item, SearchCriteria::Inclusive)
     }
-
 
     /// Returns the approximate quantile for the given normalized rank.
     ///
@@ -439,7 +443,6 @@ where
         self.sorted_view_cache = None;
     }
 
-
     // Internal methods
 
     fn get_sorted_view(&mut self) -> Result<&SortedView<T>> {
@@ -452,7 +455,8 @@ where
             self.sorted_view_cache = Some(self.compute_sorted_view()?);
         }
 
-        self.sorted_view_cache.as_ref()
+        self.sorted_view_cache
+            .as_ref()
             .ok_or(ReqError::CacheInvalid)
     }
 
@@ -511,22 +515,21 @@ where
 
     /// Update total nominal capacity across all levels
     fn update_max_nom_size(&mut self) {
-        self.max_nom_size = self.compactors.iter()
-            .map(|c| c.nominal_capacity())
-            .sum();
+        self.max_nom_size = self.compactors.iter().map(|c| c.nominal_capacity()).sum();
     }
 
-    /// Update total retained items across all levels 
+    /// Update total retained items across all levels
     fn update_num_retained(&mut self) {
-        self.num_retained = self.compactors.iter()
-            .map(|c| c.num_items())
-            .sum();
+        self.num_retained = self.compactors.iter().map(|c| c.num_items()).sum();
     }
 
     // Debug method to inspect compactor state
     #[cfg(test)]
     pub(crate) fn debug_compactor_info(&self) -> Vec<(u8, u32, u32)> {
-        self.compactors.iter().map(|c| (c.lg_weight(), c.num_items(), c.nominal_capacity())).collect()
+        self.compactors
+            .iter()
+            .map(|c| (c.lg_weight(), c.num_items(), c.nominal_capacity()))
+            .collect()
     }
 
     /// Returns the total number of retained items across all levels.
@@ -547,7 +550,9 @@ where
     /// This is useful for testing level structure and over-capacity behavior.
     #[doc(hidden)]
     pub fn level_info(&self) -> Vec<(usize, u32, u32, u64)> {
-        self.compactors.iter().enumerate()
+        self.compactors
+            .iter()
+            .enumerate()
             .map(|(i, c)| (i, c.num_items(), c.nominal_capacity(), c.weight()))
             .collect()
     }
@@ -556,7 +561,8 @@ where
     /// This is useful for testing weight conservation.
     #[doc(hidden)]
     pub fn computed_total_weight(&self) -> u64 {
-        self.compactors.iter()
+        self.compactors
+            .iter()
             .map(|c| c.num_items() as u64 * c.weight())
             .sum()
     }
@@ -567,11 +573,6 @@ where
         self.sorted_view()
     }
 
-
-
-
-
-
     /// Returns the lower bound for the rank of a given quantile at the specified confidence level.
     ///
     /// # Arguments
@@ -580,7 +581,14 @@ where
     ///
     /// Returns the lower bound rank estimate with the specified confidence.
     pub fn get_rank_lower_bound(&self, rank: f64, num_std_dev: u8) -> f64 {
-        self.compute_rank_lower_bound(self.k, self.compactors.len() as u8, rank, num_std_dev, self.total_n, matches!(self.rank_accuracy, RankAccuracy::HighRank))
+        self.compute_rank_lower_bound(
+            self.k,
+            self.compactors.len() as u8,
+            rank,
+            num_std_dev,
+            self.total_n,
+            matches!(self.rank_accuracy, RankAccuracy::HighRank),
+        )
     }
 
     /// Returns the upper bound for the rank of a given quantile at the specified confidence level.
@@ -591,7 +599,14 @@ where
     ///
     /// Returns the upper bound rank estimate with the specified confidence.
     pub fn get_rank_upper_bound(&self, rank: f64, num_std_dev: u8) -> f64 {
-        self.compute_rank_upper_bound(self.k, self.compactors.len() as u8, rank, num_std_dev, self.total_n, matches!(self.rank_accuracy, RankAccuracy::HighRank))
+        self.compute_rank_upper_bound(
+            self.k,
+            self.compactors.len() as u8,
+            rank,
+            num_std_dev,
+            self.total_n,
+            matches!(self.rank_accuracy, RankAccuracy::HighRank),
+        )
     }
 
     const FIXED_RSE_FACTOR: f64 = 0.084;
@@ -603,7 +618,15 @@ where
     }
 
     /// Computes the lower bound rank estimate with the specified confidence level.
-    fn compute_rank_lower_bound(&self, k: u16, num_levels: u8, rank: f64, num_std_dev: u8, n: u64, hra: bool) -> f64 {
+    fn compute_rank_lower_bound(
+        &self,
+        k: u16,
+        num_levels: u8,
+        rank: f64,
+        num_std_dev: u8,
+        n: u64,
+        hra: bool,
+    ) -> f64 {
         if self.is_exact_rank_threshold(k, num_levels, rank, n, hra) {
             return rank;
         }
@@ -615,7 +638,15 @@ where
     }
 
     /// Computes the upper bound rank estimate with the specified confidence level.
-    fn compute_rank_upper_bound(&self, k: u16, num_levels: u8, rank: f64, num_std_dev: u8, n: u64, hra: bool) -> f64 {
+    fn compute_rank_upper_bound(
+        &self,
+        k: u16,
+        num_levels: u8,
+        rank: f64,
+        num_std_dev: u8,
+        n: u64,
+        hra: bool,
+    ) -> f64 {
         if self.is_exact_rank_threshold(k, num_levels, rank, n, hra) {
             return rank;
         }
@@ -628,7 +659,14 @@ where
 
     /// Determines if a rank should be considered exact based on the exact rank threshold.
     /// When a rank is exact, no error bounds need to be computed.
-    fn is_exact_rank_threshold(&self, k: u16, num_levels: u8, rank: f64, n: u64, hra: bool) -> bool {
+    fn is_exact_rank_threshold(
+        &self,
+        k: u16,
+        num_levels: u8,
+        rank: f64,
+        n: u64,
+        hra: bool,
+    ) -> bool {
         let base_cap = k as u64 * Self::INIT_NUM_SECTIONS as u64;
         if num_levels == 1 || n <= base_cap {
             return true;
@@ -641,7 +679,6 @@ where
         }
     }
 }
-
 
 impl<T> Default for ReqSketch<T>
 where
@@ -676,7 +713,6 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -705,15 +741,24 @@ mod tests {
         // During compaction, some items may be discarded, so check ranges instead
         let min = sketch.min_item().ok_or(ReqError::EmptySketch)?;
         let max = sketch.max_item().ok_or(ReqError::EmptySketch)?;
-        assert!(*min >= 0.0 && *min <= 10.0, "Min should be in reasonable range, got {}", min);
-        assert!(*max >= 89.0 && *max <= 99.0, "Max should be in reasonable range, got {}", max);
+        assert!(
+            *min >= 0.0 && *min <= 10.0,
+            "Min should be in reasonable range, got {}",
+            min
+        );
+        assert!(
+            *max >= 89.0 && *max <= 99.0,
+            "Max should be in reasonable range, got {}",
+            max
+        );
         Ok(())
     }
 
     #[test]
     fn test_builder_pattern() -> Result<()> {
         let sketch: Result<ReqSketch<i32>> = ReqSketch::builder()
-            .k(16).map(|builder| builder.rank_accuracy(RankAccuracy::LowRank))
+            .k(16)
+            .map(|builder| builder.rank_accuracy(RankAccuracy::LowRank))
             .and_then(|builder| builder.build());
 
         assert!(sketch.is_ok());
@@ -735,8 +780,13 @@ mod tests {
             let expected = sketch.len();
 
             if i >= 75 {
-                println!("Item {}: total_weight={}, expected={}, diff={}",
-                         i, total_weight, expected, total_weight as i64 - expected as i64);
+                println!(
+                    "Item {}: total_weight={}, expected={}, diff={}",
+                    i,
+                    total_weight,
+                    expected,
+                    total_weight as i64 - expected as i64
+                );
 
                 if total_weight != expected {
                     println!("  MISMATCH DETAILS:");
@@ -748,8 +798,10 @@ mod tests {
                     for (level, (lg_weight, num_items, capacity)) in debug_info.iter().enumerate() {
                         let weight = 1u64 << lg_weight;
                         let level_total = *num_items as u64 * weight;
-                        println!("    Level {}: {} items × {} weight = {} total (capacity: {})",
-                                 level, num_items, weight, level_total, capacity);
+                        println!(
+                            "    Level {}: {} items × {} weight = {} total (capacity: {})",
+                            level, num_items, weight, level_total, capacity
+                        );
                     }
 
                     break;
@@ -787,15 +839,19 @@ mod tests {
         }
 
         // Test merge order: A + B vs B + A
-        sketch1a.merge(&sketch2a)?;  // sketch1a + sketch2a
-        sketch2b.merge(&sketch1b)?;  // sketch2b + sketch1b
+        sketch1a.merge(&sketch2a)?; // sketch1a + sketch2a
+        sketch2b.merge(&sketch1b)?; // sketch2b + sketch1b
 
         // Verify merge succeeded and resulted in non-empty sketches
         assert!(!sketch1a.is_empty(), "Merged sketch should not be empty");
         assert!(!sketch2b.is_empty(), "Merged sketch should not be empty");
 
         // Verify both sketches have the same total count
-        assert_eq!(sketch1a.len(), sketch2b.len(), "Merged sketches should have same length");
+        assert_eq!(
+            sketch1a.len(),
+            sketch2b.len(),
+            "Merged sketches should have same length"
+        );
 
         // Test commutativity: quantiles should be similar regardless of merge order
         let q1: f64 = sketch1a.quantile(0.5, SearchCriteria::Inclusive)?;
@@ -803,7 +859,13 @@ mod tests {
 
         let diff = (q1 - q2).abs();
         // Allow for some small numerical differences due to compaction ordering
-        assert!(diff < 100.0, "Quantiles should be reasonably close: {} vs {} (diff: {})", q1, q2, diff);
+        assert!(
+            diff < 100.0,
+            "Quantiles should be reasonably close: {} vs {} (diff: {})",
+            q1,
+            q2,
+            diff
+        );
         Ok(())
     }
 
@@ -818,27 +880,34 @@ mod tests {
         // Verify sketch contains expected number of items
         assert_eq!(sketch.len(), 10, "Sketch should contain 10 items");
         assert_eq!(sketch.total_n, 10, "Total count should be 10");
-        assert!(!sketch.is_estimation_mode(), "Should be in exact mode for 10 items");
+        assert!(
+            !sketch.is_estimation_mode(),
+            "Should be in exact mode for 10 items"
+        );
 
         // Test inclusive quantiles with precise expectations
-        let test_cases = [
-            (0.0, 1.0), (0.1, 1.0), (0.5, 5.0), (0.9, 9.0), (1.0, 10.0)
-        ];
+        let test_cases = [(0.0, 1.0), (0.1, 1.0), (0.5, 5.0), (0.9, 9.0), (1.0, 10.0)];
 
         for &(rank, expected) in &test_cases {
             let quantile = sketch.quantile(rank, SearchCriteria::Inclusive)?;
             // For exact mode with 10 items, quantiles should be precise
-            assert_eq!(quantile, expected, "quantile({}, Inclusive) should be {}", rank, expected);
+            assert_eq!(
+                quantile, expected,
+                "quantile({}, Inclusive) should be {}",
+                rank, expected
+            );
         }
 
         // Test exclusive quantiles
-        let exclusive_cases = [
-            (0.0, 1.0), (0.1, 2.0), (0.5, 6.0), (0.9, 10.0), (1.0, 10.0)
-        ];
+        let exclusive_cases = [(0.0, 1.0), (0.1, 2.0), (0.5, 6.0), (0.9, 10.0), (1.0, 10.0)];
 
         for &(rank, expected) in &exclusive_cases {
             let quantile = sketch.quantile(rank, SearchCriteria::Exclusive)?;
-            assert_eq!(quantile, expected, "quantile({}, Exclusive) should be {}", rank, expected);
+            assert_eq!(
+                quantile, expected,
+                "quantile({}, Exclusive) should be {}",
+                rank, expected
+            );
         }
 
         // Verify sorted view consistency
@@ -859,7 +928,10 @@ mod tests {
         }
 
         // Verify final counts
-        assert_eq!(sketch.total_n, n as u64, "Total count should equal number of updates");
+        assert_eq!(
+            sketch.total_n, n as u64,
+            "Total count should equal number of updates"
+        );
 
         // Verify weight consistency across compactors
         let mut total_weight = 0u64;
@@ -869,14 +941,23 @@ mod tests {
                 total_weight += level_weight;
             }
         }
-        assert_eq!(total_weight, sketch.total_n, "Sum of compactor weights should equal total_n");
+        assert_eq!(
+            total_weight, sketch.total_n,
+            "Sum of compactor weights should equal total_n"
+        );
 
         // Verify iterator weight consistency
         let iter_weight: u64 = sketch.iter().map(|(_, weight)| weight).sum();
-        assert_eq!(iter_weight, sketch.total_n, "Iterator weight sum should equal total_n");
+        assert_eq!(
+            iter_weight, sketch.total_n,
+            "Iterator weight sum should equal total_n"
+        );
 
         // Verify sketch is in estimation mode for 1000 items
-        assert!(sketch.is_estimation_mode(), "Should be in estimation mode for 1000 items");
+        assert!(
+            sketch.is_estimation_mode(),
+            "Should be in estimation mode for 1000 items"
+        );
     }
 
     #[test]
@@ -885,17 +966,30 @@ mod tests {
 
         // Verify capacity calculations are consistent across levels
         for level in 0..5 {
-            let compactor = crate::compactor::Compactor::<f64>::new(level, 12, RankAccuracy::HighRank);
+            let compactor =
+                crate::compactor::Compactor::<f64>::new(level, 12, RankAccuracy::HighRank);
             let section_size = compactor.section_size();
             let nominal_capacity = compactor.nominal_capacity();
 
             // Verify section size is even and reasonable
-            assert!(section_size.is_multiple_of(2), "Section size should be even for level {}", level);
-            assert!(section_size >= 4, "Section size should be at least 4 for level {}", level);
+            assert!(
+                section_size.is_multiple_of(2),
+                "Section size should be even for level {}",
+                level
+            );
+            assert!(
+                section_size >= 4,
+                "Section size should be at least 4 for level {}",
+                level
+            );
 
             // Verify capacity is 2 * section_size * num_sections (3 initially)
-            assert_eq!(nominal_capacity, 2 * section_size * 3,
-                      "Nominal capacity calculation should be correct for level {}", level);
+            assert_eq!(
+                nominal_capacity,
+                2 * section_size * 3,
+                "Nominal capacity calculation should be correct for level {}",
+                level
+            );
         }
 
         // Add items and verify compaction behavior
@@ -910,9 +1004,11 @@ mod tests {
 
         // If compaction occurred, verify we have multiple levels
         if sketch.len() < 50 {
-            assert!(sketch.compactors.len() > initial_len ||
-                   sketch.compactors.iter().any(|c| c.num_items() > 0),
-                   "Should have active compactors if items were compacted");
+            assert!(
+                sketch.compactors.len() > initial_len
+                    || sketch.compactors.iter().any(|c| c.num_items() > 0),
+                "Should have active compactors if items were compacted"
+            );
         }
     }
 
@@ -934,23 +1030,37 @@ mod tests {
         }
 
         // Verify final state
-        assert_eq!(sketch.total_n, n, "Total count should equal number of updates");
+        assert_eq!(
+            sketch.total_n, n,
+            "Total count should equal number of updates"
+        );
 
         // Verify weight consistency
         let total_weight: u64 = sketch.iter().map(|(_, weight)| weight).sum();
-        assert_eq!(total_weight, sketch.total_n, "Total weight should equal total_n");
+        assert_eq!(
+            total_weight, sketch.total_n,
+            "Total weight should equal total_n"
+        );
 
         // Test quantile accuracy
         let median = sketch.quantile(0.5, SearchCriteria::Inclusive)?;
-        let expected_median = (n - 1) as f64 * 0.5;  // 0-indexed, so n-1 items, median at (n-1)/2
+        let expected_median = (n - 1) as f64 * 0.5; // 0-indexed, so n-1 items, median at (n-1)/2
 
         // For 50 items, allow reasonable error due to compaction
         let error = (median - expected_median).abs() / expected_median;
-        assert!(error < 0.2, "Median error should be reasonable: got {}, expected {}, error: {:.2}%",
-               median, expected_median, error * 100.0);
+        assert!(
+            error < 0.2,
+            "Median error should be reasonable: got {}, expected {}, error: {:.2}%",
+            median,
+            expected_median,
+            error * 100.0
+        );
 
         // Verify sketch behaves reasonably
-        assert!(sketch.len() <= n, "Should not have more items than inserted");
+        assert!(
+            sketch.len() <= n,
+            "Should not have more items than inserted"
+        );
         Ok(())
     }
 
@@ -975,7 +1085,10 @@ mod tests {
 
         // Verify section growth behavior
         assert_eq!(sketch.total_n, 200, "Should have processed 200 items");
-        assert!(reached_estimation_mode, "Should reach estimation mode with 200 items");
+        assert!(
+            reached_estimation_mode,
+            "Should reach estimation mode with 200 items"
+        );
         assert!(max_levels > 1, "Should have multiple compactor levels");
 
         // Verify weight consistency
@@ -983,7 +1096,9 @@ mod tests {
         assert_eq!(total_weight, sketch.total_n, "Weight should be consistent");
 
         // Verify compaction efficiency (may retain all items if k is large)
-        assert!(sketch.len() <= 200, "Should not have more retained items than total count");
+        assert!(
+            sketch.len() <= 200,
+            "Should not have more retained items than total count"
+        );
     }
-
 }
