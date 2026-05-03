@@ -1108,7 +1108,10 @@ mod tests {
         let mut sketch: ReqSketch<f64> = ReqSketch::new();
         sketch.update(f64::NAN);
         sketch.update(f64::NAN);
-        assert!(sketch.is_empty(), "sketch should be empty after only NaN updates");
+        assert!(
+            sketch.is_empty(),
+            "sketch should be empty after only NaN updates"
+        );
         assert_eq!(sketch.len(), 0);
 
         sketch.update(1.0);
