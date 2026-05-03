@@ -124,7 +124,10 @@ where
         if !other.items.is_empty() {
             self.is_sorted = false;
         }
-        self.ensure_enough_sections();
+        // OR-ing the schedule counters can advance state past several doubling
+        // thresholds at once. Loop until no more doublings are needed (C++:
+        // req_compactor_impl.hpp:250 — `while (ensure_enough_sections()) {}`).
+        while self.ensure_enough_sections() {}
         Ok(())
     }
 
