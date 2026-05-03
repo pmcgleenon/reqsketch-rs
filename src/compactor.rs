@@ -557,7 +557,7 @@ mod tests {
         let initial = a.num_sections();
         assert_eq!(initial, 3, "default num_sections sanity");
 
-        a.merge(&b).unwrap();
+        assert!(a.merge(&b).is_ok(), "merge should succeed");
 
         assert!(
             a.num_sections() >= 12,
