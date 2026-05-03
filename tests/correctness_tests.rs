@@ -424,30 +424,31 @@ mod reference_tests {
             .rank(&500.0, SearchCriteria::Inclusive)
             .expect("Operation should succeed");
 
-        // Use manual assertions with appropriate tolerances
+        // Use manual assertions with 1% tolerances matching the C++ test suite.
+        // k=40 with n=1000 is well within exact mode so error bounds are tight.
         let q25_error = (q25 - 250.0).abs() / 250.0;
         let q50_error = (q50 - 500.0).abs() / 500.0;
         let q75_error = (q75 - 750.0).abs() / 750.0;
         let r50_error = (r50 - 0.5).abs() / 0.5;
 
         assert!(
-            q25_error <= 0.03,
-            "25th percentile error too high: {} > 3%",
+            q25_error <= 0.01,
+            "25th percentile error too high: {:.2}% > 1%",
             q25_error * 100.0
         );
         assert!(
-            q50_error <= 0.03,
-            "50th percentile error too high: {} > 3%",
+            q50_error <= 0.01,
+            "50th percentile error too high: {:.2}% > 1%",
             q50_error * 100.0
         );
         assert!(
-            q75_error <= 0.03,
-            "75th percentile error too high: {} > 3%",
+            q75_error <= 0.01,
+            "75th percentile error too high: {:.2}% > 1%",
             q75_error * 100.0
         );
         assert!(
-            r50_error <= 0.03,
-            "Rank error too high: {} > 3%",
+            r50_error <= 0.01,
+            "Rank error too high: {:.2}% > 1%",
             r50_error * 100.0
         );
     }
@@ -491,30 +492,32 @@ mod reference_tests {
             .rank(&1000.0, SearchCriteria::Inclusive)
             .expect("Operation should succeed");
 
-        // Use manual assertions with appropriate tolerances for k=100
+        // Tightened tolerances to match C++ test suite expectations.
+        // q25 uses 2% (HRA is slightly weaker at low ranks); q50/q75/r50 use 1%.
+        // k=100 with n=2000 is comfortably within exact mode; these should be tight.
         let q25_error = (q25 - 500.0).abs() / 500.0;
         let q50_error = (q50 - 1000.0).abs() / 1000.0;
         let q75_error = (q75 - 1500.0).abs() / 1500.0;
         let r50_error = (r50 - 0.5).abs() / 0.5;
 
         assert!(
-            q25_error <= 0.05,
-            "25th percentile error too high: {:.1}% > 5%",
+            q25_error <= 0.02,
+            "25th percentile error too high: {:.2}% > 2%",
             q25_error * 100.0
         );
         assert!(
-            q50_error <= 0.03,
-            "50th percentile error too high: {:.1}% > 3%",
+            q50_error <= 0.01,
+            "50th percentile error too high: {:.2}% > 1%",
             q50_error * 100.0
         );
         assert!(
-            q75_error <= 0.05,
-            "75th percentile error too high: {:.1}% > 5%",
+            q75_error <= 0.01,
+            "75th percentile error too high: {:.2}% > 1%",
             q75_error * 100.0
         );
         assert!(
-            r50_error <= 0.03,
-            "Rank error too high: {:.1}% > 3%",
+            r50_error <= 0.01,
+            "Rank error too high: {:.2}% > 1%",
             r50_error * 100.0
         );
     }
@@ -794,10 +797,12 @@ mod property_tests {
                         // Check if the non-zero value is reasonable relative to data range
                         // This is actually acceptable behavior for REQ sketches with duplicate values
                     } else {
-                        // Use relative difference for non-zero values
+                        // Use relative difference for non-zero values.
+                        // 10% tolerance is 5× tighter than the original 50%, and ~2× the REQ
+                        // documented worst-case error bound at k=12 — gives headroom for
+                        // rand::random coin-flip variance while catching real divergences.
                         let relative_diff = (q1 - q2).abs() / max_val;
-                        // Increase tolerance to 50% for REQ sketches due to compaction effects
-                        assert!(relative_diff < 0.5, "Merge commutativity violated: {} vs {}", q1, q2);
+                        assert!(relative_diff < 0.10, "Merge commutativity violated: {} vs {} (relative diff {:.2}%)", q1, q2, relative_diff * 100.0);
                     }
                 }
             }

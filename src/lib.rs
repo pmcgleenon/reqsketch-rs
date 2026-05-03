@@ -48,6 +48,14 @@ pub mod sorted_view;
 /// Trait for total ordering that handles NaN consistently.
 pub trait TotalOrd {
     fn total_cmp(&self, other: &Self) -> Ordering;
+
+    /// Returns true if this value is the floating-point NaN sentinel.
+    ///
+    /// Default: false (integer types are never NaN). Float impls override
+    /// to delegate to [`f32::is_nan`] / [`f64::is_nan`].
+    fn is_nan(&self) -> bool {
+        false
+    }
 }
 
 impl TotalOrd for f64 {
@@ -62,12 +70,22 @@ impl TotalOrd for f64 {
             f64::total_cmp(self, other)
         }
     }
+
+    #[inline(always)]
+    fn is_nan(&self) -> bool {
+        f64::is_nan(*self)
+    }
 }
 
 impl TotalOrd for f32 {
     #[inline(always)]
     fn total_cmp(&self, other: &Self) -> Ordering {
         f32::total_cmp(self, other)
+    }
+
+    #[inline(always)]
+    fn is_nan(&self) -> bool {
+        f32::is_nan(*self)
     }
 }
 
@@ -89,14 +107,30 @@ impl_total_ord_for_ord!(i8, u8, i16, u16, i32, u32, i64, u64, i128, u128, isize,
 
 /// Trait for types that can be used efficiently in REQ sketches.
 /// Implemented for numeric types that support fast copy semantics.
-pub trait ReqKey: Copy + PartialOrd + Clone {}
+pub trait ReqKey: Copy + PartialOrd + Clone {
+    /// Returns true if this value is the floating-point NaN sentinel.
+    ///
+    /// Default: false (integer types are never NaN). Float impls override
+    /// to delegate to [`f32::is_nan`] / [`f64::is_nan`].
+    fn is_nan(&self) -> bool {
+        false
+    }
+}
 
-impl ReqKey for f64 {}
-impl ReqKey for f32 {}
-impl ReqKey for i64 {}
 impl ReqKey for i32 {}
-impl ReqKey for u64 {}
+impl ReqKey for i64 {}
 impl ReqKey for u32 {}
+impl ReqKey for u64 {}
+impl ReqKey for f32 {
+    fn is_nan(&self) -> bool {
+        f32::is_nan(*self)
+    }
+}
+impl ReqKey for f64 {
+    fn is_nan(&self) -> bool {
+        f64::is_nan(*self)
+    }
+}
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -223,6 +257,11 @@ where
 
     /// Updates the sketch with a new item.
     pub fn update(&mut self, item: T) {
+        // Silently drop NaN inputs to match C++/Java reference implementations.
+        if item.is_nan() {
+            return;
+        }
+
         // Track exact min/max for DataSketches parity
         // Update min
         match &mut self.min_item {
@@ -1062,6 +1101,33 @@ mod tests {
             "Should not have more items than inserted"
         );
         Ok(())
+    }
+
+    #[test]
+    fn nan_updates_are_silently_skipped() {
+        let mut sketch: ReqSketch<f64> = ReqSketch::new();
+        sketch.update(f64::NAN);
+        sketch.update(f64::NAN);
+        assert!(
+            sketch.is_empty(),
+            "sketch should be empty after only NaN updates"
+        );
+        assert_eq!(sketch.len(), 0);
+
+        sketch.update(1.0);
+        sketch.update(f64::NAN);
+        sketch.update(2.0);
+        assert_eq!(sketch.len(), 2, "NaN updates should not increment count");
+    }
+
+    #[test]
+    fn nan_updates_are_silently_skipped_f32() {
+        let mut sketch: ReqSketch<f32> = ReqSketch::new();
+        sketch.update(f32::NAN);
+        assert!(sketch.is_empty());
+        sketch.update(1.0_f32);
+        sketch.update(f32::NAN);
+        assert_eq!(sketch.len(), 1);
     }
 
     #[test]

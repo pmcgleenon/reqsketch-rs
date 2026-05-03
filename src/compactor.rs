@@ -119,10 +119,15 @@ where
 
     /// Merges items from another compactor into this one.
     pub fn merge(&mut self, other: &Self) -> Result<()> {
+        self.state |= other.state;
         self.items.extend_from_slice(&other.items);
         if !other.items.is_empty() {
             self.is_sorted = false;
         }
+        // OR-ing the schedule counters can advance state past several doubling
+        // thresholds at once. Loop until no more doublings are needed (C++:
+        // req_compactor_impl.hpp:250 — `while (ensure_enough_sections()) {}`).
+        while self.ensure_enough_sections() {}
         Ok(())
     }
 
@@ -526,5 +531,38 @@ mod tests {
         assert!(compactor.is_sorted());
         let items: Vec<&i32> = compactor.iter().collect();
         assert_eq!(items, vec![&1, &2, &3, &4, &5, &6]);
+    }
+
+    #[test]
+    fn merge_loops_ensure_enough_sections_for_high_state() {
+        // Regression test for the bug where Compactor::merge called
+        // ensure_enough_sections() once instead of looping. Without the loop,
+        // num_sections doubles at most once per merge — but OR-ing a high state
+        // can advance past several doubling thresholds at once and require
+        // multiple doublings (matching the C++ reference at
+        // req_compactor_impl.hpp:250 — `while (ensure_enough_sections()) {}`).
+        //
+        // Setup: a fresh compactor (state=0, num_sections=3) merged with another
+        // whose state is 0xFFFF. After merge, state |= 0xFFFF = 0xFFFF.
+        // ensure_enough_sections doublings (k=12, section_size_raw=12):
+        //   - state=0xFFFF >= (1<<2)=4    ✓ → num_sections=6,  ssr≈8.49
+        //   - state=0xFFFF >= (1<<5)=32   ✓ → num_sections=12, ssr≈6.00
+        //   - state=0xFFFF >= (1<<11)=2048 ✓ → num_sections=24, ssr≈4.24
+        //   - state=0xFFFF >= (1<<23)=8388608 ✗ → stop (also ne would drop below MIN_K)
+        // Expected: num_sections == 24 with the fix; == 6 with only one call.
+        let mut a: Compactor<f64> = Compactor::new(0, 12, RankAccuracy::HighRank);
+        let mut b: Compactor<f64> = Compactor::new(0, 12, RankAccuracy::HighRank);
+        b.state = 0xFFFF;
+
+        let initial = a.num_sections();
+        assert_eq!(initial, 3, "default num_sections sanity");
+
+        assert!(a.merge(&b).is_ok(), "merge should succeed");
+
+        assert!(
+            a.num_sections() >= 12,
+            "merge must loop ensure_enough_sections; got num_sections={} (single-call would yield 6)",
+            a.num_sections()
+        );
     }
 }
