@@ -119,10 +119,12 @@ where
 
     /// Merges items from another compactor into this one.
     pub fn merge(&mut self, other: &Self) -> Result<()> {
+        self.state |= other.state;
         self.items.extend_from_slice(&other.items);
         if !other.items.is_empty() {
             self.is_sorted = false;
         }
+        self.ensure_enough_sections();
         Ok(())
     }
 
