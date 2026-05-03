@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/pmcgleenon/reqsketch-rs/compare/v0.1.3...v0.1.4) - 2026-05-03
+
+### Other
+
+- drop prop_merge_commutativity (algorithm doesn't guarantee it) ([#24](https://github.com/pmcgleenon/reqsketch-rs/pull/24))
+- Ignore rust-toolchain Dependabot updates ([#23](https://github.com/pmcgleenon/reqsketch-rs/pull/23))
+- Potential fix for code scanning alert no. 5: Workflow does not contain permissions ([#21](https://github.com/pmcgleenon/reqsketch-rs/pull/21))
+- Backport correctness fixes from C++/Java reference comparison ([#20](https://github.com/pmcgleenon/reqsketch-rs/pull/20))
+
 ## [0.1.3](https://github.com/pmcgleenon/reqsketch-rs/compare/v0.1.2...v0.1.3) - 2026-04-19
 
 ### Fixed
