@@ -88,7 +88,7 @@ where
         self.total_weight
     }
 
-    /// Returns the approximate rank of the given item with interpolation for numeric types.
+    /// Returns the approximate rank of the given item.
     ///
     /// # Arguments
     /// * `item` - The item to find the rank for
@@ -96,9 +96,12 @@ where
     ///
     /// # Returns
     /// A normalized rank in [0.0, 1.0]
-    pub fn rank_no_interpolation(&self, item: &T, criteria: SearchCriteria) -> Result<f64> {
+    pub fn rank(&self, item: &T, criteria: SearchCriteria) -> Result<f64> {
         if self.is_empty() {
             return Err(ReqError::EmptySketch);
+        }
+        if item.is_nan() {
+            return Err(ReqError::NanItem);
         }
 
         match criteria {
@@ -198,7 +201,7 @@ where
         let mut prev_rank = 0.0;
 
         for split_point in split_points {
-            let rank = self.rank_no_interpolation(split_point, criteria)?;
+            let rank = self.rank(split_point, criteria)?;
             result.push(rank - prev_rank);
             prev_rank = rank;
         }
@@ -285,16 +288,16 @@ mod tests {
         let view = create_test_view();
 
         // Test exact matches
-        assert!((view.rank_no_interpolation(&1, SearchCriteria::Inclusive)? - 0.2).abs() < 1e-10);
-        assert!((view.rank_no_interpolation(&1, SearchCriteria::Exclusive)? - 0.0).abs() < 1e-10);
+        assert!((view.rank(&1, SearchCriteria::Inclusive)? - 0.2).abs() < 1e-10);
+        assert!((view.rank(&1, SearchCriteria::Exclusive)? - 0.0).abs() < 1e-10);
 
         // Test values between items
-        assert!((view.rank_no_interpolation(&2, SearchCriteria::Inclusive)? - 0.2).abs() < 1e-10);
-        assert!((view.rank_no_interpolation(&6, SearchCriteria::Inclusive)? - 0.6).abs() < 1e-10);
+        assert!((view.rank(&2, SearchCriteria::Inclusive)? - 0.2).abs() < 1e-10);
+        assert!((view.rank(&6, SearchCriteria::Inclusive)? - 0.6).abs() < 1e-10);
 
         // Test edge cases
-        assert!((view.rank_no_interpolation(&0, SearchCriteria::Inclusive)? - 0.0).abs() < 1e-10);
-        assert!((view.rank_no_interpolation(&10, SearchCriteria::Inclusive)? - 1.0).abs() < 1e-10);
+        assert!((view.rank(&0, SearchCriteria::Inclusive)? - 0.0).abs() < 1e-10);
+        assert!((view.rank(&10, SearchCriteria::Inclusive)? - 1.0).abs() < 1e-10);
         Ok(())
     }
 
@@ -359,7 +362,7 @@ mod tests {
 
         // Operations on empty view should return errors
         assert!(view
-            .rank_no_interpolation(&5, SearchCriteria::Inclusive)
+            .rank(&5, SearchCriteria::Inclusive)
             .is_err());
         assert!(view.quantile(0.5, SearchCriteria::Inclusive).is_err());
     }

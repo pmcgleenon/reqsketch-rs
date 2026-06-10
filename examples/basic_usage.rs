@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Sketch statistics:");
-    println!("  Total items processed: {}", sketch.len());
+    println!("  Total items processed: {}", sketch.n());
     println!("  Items retained: {}", sketch.num_retained());
     println!("  Estimation mode: {}", sketch.is_estimation_mode());
     println!("  Min value: {:?}", sketch.min_item());
@@ -98,19 +98,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "  Sketch 1: {} items, median = {:.2}",
-        sketch1.len(),
+        sketch1.n(),
         sketch1.quantile(0.5, SearchCriteria::Inclusive)?
     );
     println!(
         "  Sketch 2: {} items, median = {:.2}",
-        sketch2.len(),
+        sketch2.n(),
         sketch2.quantile(0.5, SearchCriteria::Inclusive)?
     );
 
     sketch1.merge(&sketch2)?;
     println!(
         "  Merged sketch: {} items, median = {:.2}",
-        sketch1.len(),
+        sketch1.n(),
         sketch1.quantile(0.5, SearchCriteria::Inclusive)?
     );
 

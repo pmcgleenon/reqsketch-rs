@@ -22,8 +22,8 @@ fn test_critical_quantiles_2_sigma() {
             .rank(&true_quantile, SearchCriteria::Inclusive)
             .expect("Operation should succeed");
 
-        let lower_bound = sketch.get_rank_lower_bound(rank, 2);
-        let upper_bound = sketch.get_rank_upper_bound(rank, 2);
+        let lower_bound = sketch.rank_lower_bound(rank, 2);
+        let upper_bound = sketch.rank_upper_bound(rank, 2);
         let within_bounds = estimated_rank >= lower_bound && estimated_rank <= upper_bound;
 
         let rank_error = (estimated_rank - rank).abs();
@@ -60,8 +60,8 @@ fn test_extreme_quantiles_bounds() {
 
         match sketch.rank(&true_quantile, SearchCriteria::Inclusive) {
             Ok(estimated_rank) => {
-                let lower = sketch.get_rank_lower_bound(rank, 2);
-                let upper = sketch.get_rank_upper_bound(rank, 2);
+                let lower = sketch.rank_lower_bound(rank, 2);
+                let upper = sketch.rank_upper_bound(rank, 2);
                 let within_2sigma = estimated_rank >= lower && estimated_rank <= upper;
 
                 let error_pct = (estimated_rank - rank).abs() / rank * 100.0;
@@ -108,14 +108,14 @@ fn test_hra_high_rank_coverage() {
                 .rank(&true_quantile, SearchCriteria::Inclusive)
                 .unwrap();
 
-            let lb2 = sketch.get_rank_lower_bound(test_rank, 2);
-            let ub2 = sketch.get_rank_upper_bound(test_rank, 2);
+            let lb2 = sketch.rank_lower_bound(test_rank, 2);
+            let ub2 = sketch.rank_upper_bound(test_rank, 2);
             if estimated_rank >= lb2 && estimated_rank <= ub2 {
                 within_2sigma += 1;
             }
 
-            let lb3 = sketch.get_rank_lower_bound(test_rank, 3);
-            let ub3 = sketch.get_rank_upper_bound(test_rank, 3);
+            let lb3 = sketch.rank_lower_bound(test_rank, 3);
+            let ub3 = sketch.rank_upper_bound(test_rank, 3);
             if estimated_rank >= lb3 && estimated_rank <= ub3 {
                 within_3sigma += 1;
             }
@@ -186,5 +186,5 @@ fn test_bounds_hra_vs_lra_structure() {
 }
 
 fn sketch_bound_width(sketch: &ReqSketch<f64>, rank: f64, sigma: u8) -> f64 {
-    sketch.get_rank_upper_bound(rank, sigma) - sketch.get_rank_lower_bound(rank, sigma)
+    sketch.rank_upper_bound(rank, sigma) - sketch.rank_lower_bound(rank, sigma)
 }

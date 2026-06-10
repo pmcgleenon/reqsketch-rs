@@ -17,12 +17,12 @@ mod reference_tests {
 
     #[test]
     fn test_empty_sketch() {
-        let mut sketch: ReqSketch<f32> = ReqSketch::new();
+        let sketch: ReqSketch<f32> = ReqSketch::new();
 
         assert_eq!(sketch.k(), 12);
         assert!(sketch.is_empty());
         assert!(!sketch.is_estimation_mode());
-        assert_eq!(sketch.len(), 0);
+        assert_eq!(sketch.n(), 0);
         assert_eq!(sketch.num_retained(), 0);
         assert!(sketch.min_item().is_none());
         assert!(sketch.max_item().is_none());
@@ -41,7 +41,7 @@ mod reference_tests {
 
         assert!(!sketch.is_empty());
         assert!(!sketch.is_estimation_mode());
-        assert_eq!(sketch.len(), 1);
+        assert_eq!(sketch.n(), 1);
         assert_eq!(sketch.num_retained(), 1);
         assert_eq!(sketch.min_item(), Some(&1.0));
         assert_eq!(sketch.max_item(), Some(&1.0));
@@ -104,7 +104,7 @@ mod reference_tests {
         assert_eq!(sketch.rank_accuracy(), RankAccuracy::LowRank);
         assert!(!sketch.is_empty());
         assert!(!sketch.is_estimation_mode());
-        assert_eq!(sketch.len(), 1);
+        assert_eq!(sketch.n(), 1);
         assert_eq!(sketch.num_retained(), 1);
     }
 
@@ -120,7 +120,7 @@ mod reference_tests {
 
         assert!(!sketch.is_empty());
         assert!(!sketch.is_estimation_mode());
-        assert_eq!(sketch.len(), 6);
+        assert_eq!(sketch.n(), 6);
         assert_eq!(sketch.num_retained(), 6);
 
         // Rank tests (matching C++ reference)
@@ -159,7 +159,7 @@ mod reference_tests {
 
         assert!(!sketch.is_empty());
         assert!(!sketch.is_estimation_mode());
-        assert_eq!(sketch.len(), 10);
+        assert_eq!(sketch.n(), 10);
         assert_eq!(sketch.num_retained(), 10);
 
         // Exclusive rank tests (matching C++ reference)
@@ -341,7 +341,7 @@ mod reference_tests {
 
         assert!(!sketch.is_empty());
         assert!(sketch.is_estimation_mode());
-        assert_eq!(sketch.len(), n);
+        assert_eq!(sketch.n(), n);
         assert!(sketch.num_retained() < n as u32);
 
         // Rank tests with appropriate tolerance for estimation mode
@@ -636,9 +636,8 @@ mod statistical_tests {
     #[test]
     fn test_rank_matches_sorted_view() {
         // sketch.rank(item, criteria) is documented to return the same value
-        // as sketch.sorted_view().rank_no_interpolation(item, criteria). Keep
-        // that contract pinned so either path can be re-wired without silent
-        // drift.
+        // as sketch.sorted_view().rank(item, criteria). Keep that contract
+        // pinned so either path can be re-wired without silent drift.
         for &n in &[100u64, 10_000] {
             for accuracy in [RankAccuracy::HighRank, RankAccuracy::LowRank] {
                 let mut sketch: ReqSketch<f64> = ReqSketch::builder()
@@ -649,16 +648,19 @@ mod statistical_tests {
                     sketch.update(i as f64);
                 }
 
-                let probes: Vec<f64> = (0..11).map(|i| i as f64 * (n - 1) as f64 / 10.0).collect();
+                let mut probes: Vec<f64> =
+                    (0..11).map(|i| i as f64 * (n - 1) as f64 / 10.0).collect();
+                // Out-of-range probes: below the minimum and above the maximum.
+                probes.push(-1.0);
+                probes.push(n as f64 * 2.0);
 
                 for criteria in [SearchCriteria::Inclusive, SearchCriteria::Exclusive] {
                     for &v in &probes {
                         let direct = sketch.rank(&v, criteria).expect("rank");
                         let via_view = sketch
                             .sorted_view()
-                            .expect("sorted_view")
-                            .rank_no_interpolation(&v, criteria)
-                            .expect("rank_no_interpolation");
+                            .rank(&v, criteria)
+                            .expect("view rank");
                         assert_eq!(
                             direct, via_view,
                             "rank/sorted_view disagree at n={}, accuracy={:?}, criteria={:?}, v={}",
@@ -679,7 +681,7 @@ mod statistical_tests {
 
         // Sum of all weights from iterator should equal total count
         let total_weight: u64 = sketch.iter().map(|(_, weight)| weight).sum();
-        assert_eq!(total_weight, sketch.len());
+        assert_eq!(total_weight, sketch.n());
 
         // All items should be within min/max bounds
         for (item, weight) in sketch.iter() {
@@ -711,7 +713,7 @@ mod property_tests {
                     let computed_rank = sketch.rank(&quantile, SearchCriteria::Inclusive).expect("Operation should succeed");
 
                     // Allow some tolerance due to discrete nature of sketch
-                    let base_tolerance = 2.0 / sketch.len() as f64;
+                    let base_tolerance = 2.0 / sketch.n() as f64;
 
                     // Check for edge cases that affect rank-quantile consistency
                     if let (Some(min_val), Some(max_val)) = (sketch.min_item(), sketch.max_item()) {
@@ -820,7 +822,7 @@ mod stress_tests {
         }
 
         // Verify basic properties still hold
-        assert_eq!(sketch.len(), n);
+        assert_eq!(sketch.n(), n);
         assert_eq!(sketch.min_item(), Some(&0.0));
         assert_eq!(sketch.max_item(), Some(&((n - 1) as f64)));
 
@@ -852,7 +854,7 @@ mod stress_tests {
                 .expect("Operation should succeed");
         }
 
-        assert_eq!(main_sketch.len(), 10_000);
+        assert_eq!(main_sketch.n(), 10_000);
         assert_eq!(main_sketch.min_item(), Some(&0.0));
         assert_eq!(main_sketch.max_item(), Some(&9999.0));
 

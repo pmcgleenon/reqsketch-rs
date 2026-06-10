@@ -77,42 +77,6 @@ where
     }
 }
 
-/// Iterator over items in a specific compactor level.
-/// Zero-allocation implementation using direct slice iteration.
-pub struct CompactorIterator<'a, T>
-where
-    T: Clone + TotalOrd + PartialEq,
-{
-    items_iter: std::slice::Iter<'a, T>,
-    weight: u64,
-}
-
-impl<'a, T> CompactorIterator<'a, T>
-where
-    T: Clone + TotalOrd + PartialEq,
-{
-    /// Creates a new iterator for a compactor.
-    pub fn new(compactor: &'a Compactor<T>) -> Self {
-        Self {
-            items_iter: compactor.items_slice().iter(),
-            weight: compactor.weight(),
-        }
-    }
-}
-
-impl<'a, T> Iterator for CompactorIterator<'a, T>
-where
-    T: Clone + TotalOrd + PartialEq,
-{
-    type Item = (T, u64);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.items_iter
-            .next()
-            .map(|item| (item.clone(), self.weight))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::ReqSketch;

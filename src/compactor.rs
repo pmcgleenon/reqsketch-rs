@@ -3,7 +3,7 @@
 //! Each level in the REQ sketch uses a compactor to maintain a bounded set of items
 //! with deterministic compaction when capacity is exceeded.
 
-use crate::{RankAccuracy, Result, TotalOrd};
+use crate::{RankAccuracy, TotalOrd};
 
 fn nearest_even(value: f32) -> u32 {
     ((value / 2.0).round() as u32) << 1
@@ -84,6 +84,7 @@ where
     }
 
     /// Returns the level (log weight) of this compactor.
+    #[cfg(test)]
     pub fn lg_weight(&self) -> u8 {
         self.lg_weight
     }
@@ -99,11 +100,13 @@ where
     }
 
     /// Returns the section size of this compactor.
+    #[cfg(test)]
     pub fn section_size(&self) -> u32 {
         self.section_size
     }
 
     /// Returns whether the items are currently sorted.
+    #[cfg(test)]
     pub fn is_sorted(&self) -> bool {
         self.is_sorted
     }
@@ -118,7 +121,7 @@ where
     }
 
     /// Merges items from another compactor into this one.
-    pub fn merge(&mut self, other: &Self) -> Result<()> {
+    pub fn merge(&mut self, other: &Self) {
         self.state |= other.state;
         self.items.extend_from_slice(&other.items);
         if !other.items.is_empty() {
@@ -128,7 +131,6 @@ where
         // thresholds at once. Loop until no more doublings are needed (C++:
         // req_compactor_impl.hpp:250 — `while (ensure_enough_sections()) {}`).
         while self.ensure_enough_sections() {}
-        Ok(())
     }
 
     /// Merges pre-sorted items into this compactor.
@@ -228,7 +230,7 @@ where
         let (start, end) = compaction_range;
         let mut i = start + if odds { 1 } else { 0 };
         while i < end {
-            out.push(self.items[i].clone()); // TODO: use Copy fast-path for numeric types
+            out.push(self.items[i].clone());
             i += 2;
         }
 
@@ -245,14 +247,6 @@ where
         self.ensure_enough_sections();
     }
 
-    /// Back-compat wrapper (allocates if used). Prefer `compact_into` for performance.
-    #[inline(always)]
-    pub fn compact(&mut self, _rank_accuracy: RankAccuracy) -> Vec<T> {
-        let mut out = Vec::new();
-        self.compact_into(_rank_accuracy, &mut out);
-        out
-    }
-
     /// Returns an iterator over the items in this compactor.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.items.iter()
@@ -263,16 +257,36 @@ where
         &self.items
     }
 
+    /// Counts the items at-or-below (`inclusive`) or strictly below `item`.
+    ///
+    /// Binary search when this compactor is sorted, linear scan otherwise.
+    pub fn count_below(&self, item: &T, inclusive: bool) -> usize {
+        if self.is_sorted {
+            if inclusive {
+                self.items.partition_point(|x| x.total_cmp(item).is_le())
+            } else {
+                self.items.partition_point(|x| x.total_cmp(item).is_lt())
+            }
+        } else {
+            self.items
+                .iter()
+                .filter(|x| {
+                    let ord = x.total_cmp(item);
+                    if inclusive {
+                        ord.is_le()
+                    } else {
+                        ord.is_lt()
+                    }
+                })
+                .count()
+        }
+    }
+
     /// Returns the weight (2^lg_weight) for items in this compactor.
     pub fn weight(&self) -> u64 {
         1u64 << self.lg_weight
     }
 
-    /// Returns the current state for debugging.
-    #[cfg(test)]
-    pub fn state(&self) -> u64 {
-        self.state
-    }
 
     /// Returns the number of sections for debugging.
     #[cfg(test)]
@@ -337,139 +351,6 @@ where
         (low, high)
     }
 
-    /// Computes the weight contribution of this compactor for rank calculation.
-    ///
-    /// # Arguments
-    /// * `item` - The item to find the weight for
-    /// * `inclusive` - Whether to include the item's weight in the calculation
-    ///
-    /// # Returns
-    /// The weight contributed by this compactor (number of items * 2^lg_weight)
-    pub fn compute_weight(&mut self, item: &T, inclusive: bool) -> u64 {
-        // Ensure items are sorted for binary search
-        if !self.is_sorted {
-            self.sort();
-        }
-
-        // Perform binary search to find position
-        let position = if inclusive {
-            // upper_bound: first position where item < items[pos]
-            self.items.partition_point(|x| x.total_cmp(item).is_le())
-        } else {
-            // lower_bound: first position where !(items[pos] < item)
-            self.items.partition_point(|x| x.total_cmp(item).is_lt())
-        };
-
-        // Return distance (number of items) shifted by lg_weight
-        (position as u64) << self.lg_weight
-    }
-}
-
-// Specialized implementations for Copy types (numeric fast-path)
-impl<T> Compactor<T>
-where
-    T: Copy + Clone + TotalOrd + PartialEq,
-{
-    /// Fast compaction for Copy types - avoids cloning
-    pub fn compact_into_fast(&mut self, _rank_accuracy: RankAccuracy, out: &mut Vec<T>) {
-        if self.items.is_empty() {
-            out.clear();
-            return;
-        }
-
-        // Sort entire buffer (C++ sorts full buffer before compaction)
-        self.sort();
-
-        // Calculate sections to compact based on state
-        let secs_to_compact =
-            ((!self.state).trailing_zeros() + 1).min(self.num_sections as u32) as u8;
-        let compaction_range = self.compute_compaction_range(secs_to_compact);
-
-        // Must have at least 2 items to compact
-        if compaction_range.1 <= compaction_range.0 || (compaction_range.1 - compaction_range.0) < 2
-        {
-            out.clear();
-            return;
-        }
-
-        // Coin flip (matches C++ and compact_into logic)
-        if (self.state & 1) == 1 {
-            self.coin = !self.coin;
-        } else {
-            self.coin = rand::random::<bool>();
-        }
-        let odds = self.coin;
-
-        // Build promoted items directly into output buffer (NO CLONE for Copy types)
-        out.clear();
-        let (start, end) = compaction_range;
-        let mut i = start + if odds { 1 } else { 0 };
-        while i < end {
-            out.push(self.items[i]); // Direct copy, no clone() call!
-            i += 2;
-        }
-
-        // Remove the compacted range in-place: shift tail left and truncate (no allocation).
-        let removed = end - start;
-        if end < self.items.len() {
-            // Use copy for Copy types - no need for unsafe
-            self.items.copy_within(end.., start);
-        }
-        let new_len = self.items.len() - removed;
-        self.items.truncate(new_len);
-
-        // Update state, then ensure enough sections (C++ order)
-        self.state += 1;
-        self.ensure_enough_sections();
-    }
-
-    /// Fast merge for Copy types - avoids cloning in merge operations
-    pub fn merge_sorted_fast(&mut self, items: &[T]) {
-        if items.is_empty() {
-            return;
-        }
-
-        if self.items.is_empty() {
-            self.items.extend_from_slice(items);
-            self.is_sorted = true;
-            return;
-        }
-
-        // Ensure sorted on both inputs by contract
-        let total = self.items.len() + items.len();
-        self.scratch_buffer.clear();
-        if self.scratch_buffer.capacity() < total {
-            self.scratch_buffer
-                .reserve(total - self.scratch_buffer.capacity());
-        }
-
-        let (mut i, mut j) = (0usize, 0usize);
-        let (a, b) = (&self.items, items);
-
-        // Two-pointer merge into scratch buffer - NO CLONE for Copy types
-        while i < a.len() && j < b.len() {
-            if a[i].total_cmp(&b[j]).is_le() {
-                self.scratch_buffer.push(a[i]); // Direct copy
-                i += 1;
-            } else {
-                self.scratch_buffer.push(b[j]); // Direct copy
-                j += 1;
-            }
-        }
-
-        // Add remaining elements - no clone needed
-        if i < a.len() {
-            self.scratch_buffer.extend_from_slice(&a[i..]);
-        }
-        if j < b.len() {
-            self.scratch_buffer.extend_from_slice(&b[j..]);
-        }
-
-        // Swap scratch buffer with items (zero-copy)
-        self.items.clear();
-        std::mem::swap(&mut self.items, &mut self.scratch_buffer);
-        self.is_sorted = true;
-    }
 }
 
 #[cfg(test)]
@@ -557,7 +438,7 @@ mod tests {
         let initial = a.num_sections();
         assert_eq!(initial, 3, "default num_sections sanity");
 
-        assert!(a.merge(&b).is_ok(), "merge should succeed");
+        a.merge(&b);
 
         assert!(
             a.num_sections() >= 12,
