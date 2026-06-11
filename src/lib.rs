@@ -1072,10 +1072,7 @@ mod tests {
         );
 
         // Verify sketch behaves reasonably
-        assert!(
-            sketch.n() <= n,
-            "Should not have more items than inserted"
-        );
+        assert!(sketch.n() <= n, "Should not have more items than inserted");
         Ok(())
     }
 

@@ -287,7 +287,6 @@ where
         1u64 << self.lg_weight
     }
 
-
     /// Returns the number of sections for debugging.
     #[cfg(test)]
     pub fn num_sections(&self) -> u8 {
@@ -350,7 +349,6 @@ where
 
         (low, high)
     }
-
 }
 
 #[cfg(test)]

@@ -657,10 +657,7 @@ mod statistical_tests {
                 for criteria in [SearchCriteria::Inclusive, SearchCriteria::Exclusive] {
                     for &v in &probes {
                         let direct = sketch.rank(&v, criteria).expect("rank");
-                        let via_view = sketch
-                            .sorted_view()
-                            .rank(&v, criteria)
-                            .expect("view rank");
+                        let via_view = sketch.sorted_view().rank(&v, criteria).expect("view rank");
                         assert_eq!(
                             direct, via_view,
                             "rank/sorted_view disagree at n={}, accuracy={:?}, criteria={:?}, v={}",

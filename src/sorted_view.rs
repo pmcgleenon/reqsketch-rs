@@ -361,9 +361,7 @@ mod tests {
         assert_eq!(view.total_weight(), 0);
 
         // Operations on empty view should return errors
-        assert!(view
-            .rank(&5, SearchCriteria::Inclusive)
-            .is_err());
+        assert!(view.rank(&5, SearchCriteria::Inclusive).is_err());
         assert!(view.quantile(0.5, SearchCriteria::Inclusive).is_err());
     }
 }

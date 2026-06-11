@@ -87,7 +87,6 @@ where
             max_item: None,
         })
     }
-
 }
 
 impl<T> Default for ReqSketchBuilder<T>
