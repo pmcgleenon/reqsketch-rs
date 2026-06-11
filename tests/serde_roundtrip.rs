@@ -13,7 +13,7 @@ where
 {
     assert_eq!(original.k(), rebuilt.k());
     assert_eq!(original.rank_accuracy(), rebuilt.rank_accuracy());
-    assert_eq!(original.len(), rebuilt.len());
+    assert_eq!(original.n(), rebuilt.n());
     assert_eq!(original.num_retained(), rebuilt.num_retained());
     assert_eq!(original.min_item(), rebuilt.min_item());
     assert_eq!(original.max_item(), rebuilt.max_item());
@@ -28,7 +28,7 @@ fn json_roundtrip_exact_mode() {
     }
 
     let json = serde_json::to_string(&sketch).expect("serialize");
-    let mut rebuilt: ReqSketch<f64> = serde_json::from_str(&json).expect("deserialize");
+    let rebuilt: ReqSketch<f64> = serde_json::from_str(&json).expect("deserialize");
 
     rebuilt_matches(&sketch, &rebuilt);
 
@@ -53,7 +53,7 @@ fn json_roundtrip_estimation_mode() {
     assert!(sketch.is_estimation_mode());
 
     let json = serde_json::to_string(&sketch).expect("serialize");
-    let mut rebuilt: ReqSketch<f64> = serde_json::from_str(&json).expect("deserialize");
+    let rebuilt: ReqSketch<f64> = serde_json::from_str(&json).expect("deserialize");
 
     rebuilt_matches(&sketch, &rebuilt);
 
@@ -90,7 +90,7 @@ fn roundtrip_still_mergeable() {
     let mut merged_roundtripped = a_rebuilt.clone();
     merged_roundtripped.merge(&b_rebuilt).unwrap();
 
-    assert_eq!(merged_direct.len(), merged_roundtripped.len());
+    assert_eq!(merged_direct.n(), merged_roundtripped.n());
     assert_eq!(merged_direct.min_item(), merged_roundtripped.min_item());
     assert_eq!(merged_direct.max_item(), merged_roundtripped.max_item());
 }

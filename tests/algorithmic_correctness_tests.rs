@@ -244,8 +244,8 @@ mod error_bounds_validation_tests {
             // Test error bounds get tighter as k increases
             let test_rank = 0.25;
             let error_bound = {
-                let lower = sketch.get_rank_lower_bound(test_rank, 2);
-                let upper = sketch.get_rank_upper_bound(test_rank, 2);
+                let lower = sketch.rank_lower_bound(test_rank, 2);
+                let upper = sketch.rank_upper_bound(test_rank, 2);
                 (test_rank - lower).max(upper - test_rank)
             };
 
@@ -284,14 +284,14 @@ mod error_bounds_validation_tests {
             }
 
             let hra_error = {
-                let lower = hra_sketch.get_rank_lower_bound(rank, 2);
-                let upper = hra_sketch.get_rank_upper_bound(rank, 2);
+                let lower = hra_sketch.rank_lower_bound(rank, 2);
+                let upper = hra_sketch.rank_upper_bound(rank, 2);
                 (rank - lower).max(upper - rank)
             };
 
             let lra_error = {
-                let lower = lra_sketch.get_rank_lower_bound(rank, 2);
-                let upper = lra_sketch.get_rank_upper_bound(rank, 2);
+                let lower = lra_sketch.rank_lower_bound(rank, 2);
+                let upper = lra_sketch.rank_upper_bound(rank, 2);
                 (rank - lower).max(upper - rank)
             };
 
@@ -330,8 +330,8 @@ mod error_bounds_validation_tests {
         let test_ranks = [0.1, 0.25, 0.5, 0.75, 0.9];
 
         for &rank in &test_ranks {
-            let lower = sketch.get_rank_lower_bound(rank, 2);
-            let upper = sketch.get_rank_upper_bound(rank, 2);
+            let lower = sketch.rank_lower_bound(rank, 2);
+            let upper = sketch.rank_upper_bound(rank, 2);
 
             // In exact mode, bounds should be very tight (exact or near-exact)
             let error_bound = (upper - lower) / 2.0;
@@ -370,10 +370,10 @@ mod internal_state_consistency_tests {
             let computed_weight = sketch.computed_total_weight();
             assert_eq!(
                 computed_weight,
-                sketch.len(),
+                sketch.n(),
                 "Weight conservation violated: computed={}, actual={}",
                 computed_weight,
-                sketch.len()
+                sketch.n()
             );
         }
     }
@@ -390,9 +390,7 @@ mod internal_state_consistency_tests {
         }
 
         // Get sorted view and verify ordering
-        let sorted_view = sketch
-            .test_get_sorted_view()
-            .expect("Operation should succeed");
+        let sorted_view = sketch.sorted_view();
         let mut prev_value = None;
 
         for item in sorted_view.iter() {
@@ -419,18 +417,18 @@ mod internal_state_consistency_tests {
             sketch2.update((i + 5000) as f64);
         }
 
-        let total_items_before = sketch1.len() + sketch2.len();
+        let total_items_before = sketch1.n() + sketch2.n();
 
         // Merge sketches
         sketch1.merge(&sketch2).expect("Operation should succeed");
 
         // Verify total weight conservation
         assert_eq!(
-            sketch1.len(),
+            sketch1.n(),
             total_items_before,
             "Merge should conserve total weight: expected {}, got {}",
             total_items_before,
-            sketch1.len()
+            sketch1.n()
         );
 
         // With C++ global compaction strategy, merge operations may temporarily exceed
@@ -455,8 +453,8 @@ mod internal_state_consistency_tests {
 
         // Verify error bounds are still valid
         let test_rank = 0.5;
-        let lower = sketch1.get_rank_lower_bound(test_rank, 2);
-        let upper = sketch1.get_rank_upper_bound(test_rank, 2);
+        let lower = sketch1.rank_lower_bound(test_rank, 2);
+        let upper = sketch1.rank_upper_bound(test_rank, 2);
 
         assert!(
             lower <= test_rank && test_rank <= upper,
@@ -496,8 +494,8 @@ mod cross_validation_tests {
             let error = (round_trip_rank - rank).abs();
 
             // Get theoretical bounds to determine acceptable error
-            let lower = sketch.get_rank_lower_bound(rank, 3);
-            let upper = sketch.get_rank_upper_bound(rank, 3);
+            let lower = sketch.rank_lower_bound(rank, 3);
+            let upper = sketch.rank_upper_bound(rank, 3);
             let theoretical_error = (rank - lower).max(upper - rank);
 
             assert!(
@@ -545,8 +543,8 @@ mod cross_validation_tests {
 
         // Also test that rank bounds are directionally correct (like C++ tests do)
         for &rank in &test_ranks {
-            let lower = sketch.get_rank_lower_bound(rank, 2);
-            let upper = sketch.get_rank_upper_bound(rank, 2);
+            let lower = sketch.rank_lower_bound(rank, 2);
+            let upper = sketch.rank_upper_bound(rank, 2);
 
             assert!(
                 lower <= rank && rank <= upper,

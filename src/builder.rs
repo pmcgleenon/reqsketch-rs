@@ -52,10 +52,12 @@ where
     /// Sets the k parameter.
     ///
     /// # Arguments
-    /// * `k` - Controls size and error of the sketch. Must be even and >= 4.
+    /// * `k` - Controls size and error of the sketch. Must be even and in the
+    ///   range [4, 1024], matching the DataSketches Java implementation (and
+    ///   keeping sketches within the limits of the cross-language wire format).
     ///
     /// # Errors
-    /// Returns `ReqError::InvalidK` if k is not even or < 4.
+    /// Returns `ReqError::InvalidK` if k is odd or outside [4, 1024].
     pub fn k(mut self, k: u16) -> Result<Self> {
         validate_k(k)?;
         self.k = k;
@@ -83,18 +85,7 @@ where
             promotion_buf: Vec::with_capacity(self.k as usize), // Pre-allocate based on k
             min_item: None,
             max_item: None,
-            sorted_view_cache: None,
         })
-    }
-
-    /// Returns the currently configured k value.
-    pub fn get_k(&self) -> u16 {
-        self.k
-    }
-
-    /// Returns the currently configured rank accuracy mode.
-    pub fn get_rank_accuracy(&self) -> RankAccuracy {
-        self.rank_accuracy
     }
 }
 
@@ -107,9 +98,9 @@ where
     }
 }
 
-/// Validates the k parameter.
+/// Validates the k parameter: even and in [4, 1024] (DataSketches Java parity).
 pub(crate) fn validate_k(k: u16) -> Result<()> {
-    if k < 4 || !k.is_multiple_of(2) {
+    if !(4..=1024).contains(&k) || !k.is_multiple_of(2) {
         Err(ReqError::InvalidK(k))
     } else {
         Ok(())
@@ -123,8 +114,8 @@ mod tests {
     #[test]
     fn test_default_builder() {
         let builder: ReqSketchBuilder<f64> = ReqSketchBuilder::new();
-        assert_eq!(builder.get_k(), 12);
-        assert_eq!(builder.get_rank_accuracy(), RankAccuracy::HighRank);
+        assert_eq!(builder.k, 12);
+        assert_eq!(builder.rank_accuracy, RankAccuracy::HighRank);
     }
 
     #[test]
@@ -132,14 +123,14 @@ mod tests {
         // Valid k values
         assert!(ReqSketchBuilder::<f64>::new().k(4).is_ok());
         assert!(ReqSketchBuilder::<f64>::new().k(12).is_ok());
-        assert!(ReqSketchBuilder::<f64>::new().k(1024).is_ok());
-        assert!(ReqSketchBuilder::<f64>::new().k(2048).is_ok()); // large values now allowed
-        assert!(ReqSketchBuilder::<f64>::new().k(u16::MAX - 1).is_ok()); // max even u16
+        assert!(ReqSketchBuilder::<f64>::new().k(1024).is_ok()); // upper bound
 
         // Invalid k values
         assert!(ReqSketchBuilder::<f64>::new().k(3).is_err()); // too small
         assert!(ReqSketchBuilder::<f64>::new().k(5).is_err()); // odd
-        assert!(ReqSketchBuilder::<f64>::new().k(u16::MAX).is_err()); // max u16 is odd
+        assert!(ReqSketchBuilder::<f64>::new().k(1026).is_err()); // above upper bound
+        assert!(ReqSketchBuilder::<f64>::new().k(2048).is_err()); // above upper bound
+        assert!(ReqSketchBuilder::<f64>::new().k(u16::MAX).is_err()); // odd and too large
     }
 
     #[test]
@@ -159,11 +150,11 @@ mod tests {
         assert!(validate_k(4).is_ok());
         assert!(validate_k(12).is_ok());
         assert!(validate_k(1024).is_ok());
-        assert!(validate_k(2048).is_ok()); // large values now allowed
-        assert!(validate_k(u16::MAX - 1).is_ok()); // max even u16
 
         assert!(validate_k(3).is_err());
         assert!(validate_k(5).is_err());
-        assert!(validate_k(u16::MAX).is_err()); // max u16 is odd
+        assert!(validate_k(1026).is_err()); // above upper bound
+        assert!(validate_k(2048).is_err()); // above upper bound
+        assert!(validate_k(u16::MAX).is_err());
     }
 }

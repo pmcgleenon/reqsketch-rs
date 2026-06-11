@@ -22,8 +22,8 @@ fn test_bounds_structural_properties() {
         let bounds: Vec<(f64, f64)> = (1..=3u8)
             .map(|s| {
                 (
-                    sketch.get_rank_lower_bound(rank, s),
-                    sketch.get_rank_upper_bound(rank, s),
+                    sketch.rank_lower_bound(rank, s),
+                    sketch.rank_upper_bound(rank, s),
                 )
             })
             .collect();
@@ -95,8 +95,8 @@ fn test_3_sigma_empirical_coverage() {
         let estimated_rank = sketch
             .rank(&true_quantile, SearchCriteria::Inclusive)
             .unwrap();
-        let lower = sketch.get_rank_lower_bound(test_rank, 3);
-        let upper = sketch.get_rank_upper_bound(test_rank, 3);
+        let lower = sketch.rank_lower_bound(test_rank, 3);
+        let upper = sketch.rank_upper_bound(test_rank, 3);
 
         if estimated_rank >= lower && estimated_rank <= upper {
             within_bounds_count += 1;

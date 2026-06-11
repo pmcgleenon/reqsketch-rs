@@ -49,18 +49,40 @@ fn bench_query_latency(c: &mut Criterion) {
     // Test key quantiles
     let quantiles = vec![0.5, 0.9, 0.95, 0.99];
 
+    // One-shot convenience path: a single quantiles() call builds one
+    // transient sorted view and answers all ranks from it, so this is
+    // dominated by view construction.
+    group.bench_function("quantiles_one_shot", |b| {
+        b.iter(|| {
+            let result = sketch.quantiles(black_box(&quantiles), SearchCriteria::Inclusive);
+            black_box(result)
+        });
+    });
+
+    // One-time cost of taking a sorted-view snapshot
+    group.bench_function("sorted_view_build", |b| {
+        b.iter(|| black_box(sketch.sorted_view()));
+    });
+
+    // Intended pattern for repeated queries: build the view once, query it
+    let view = sketch.sorted_view();
     for &quantile in &quantiles {
         group.bench_with_input(
-            BenchmarkId::new("quantile", format!("p{}", (quantile * 100.0) as u32)),
+            BenchmarkId::new("view_quantile", format!("p{}", (quantile * 100.0) as u32)),
             &quantile,
             |b, &quantile| {
                 b.iter(|| {
-                    let result = sketch.quantile(black_box(quantile), SearchCriteria::Inclusive);
+                    let result = view.quantile(black_box(quantile), SearchCriteria::Inclusive);
                     black_box(result)
                 });
             },
         );
     }
+
+    // Single-shot rank straight off the compactors (no view build)
+    group.bench_function("rank_direct", |b| {
+        b.iter(|| black_box(sketch.rank(black_box(&500000.0), SearchCriteria::Inclusive)));
+    });
 
     group.finish();
 }
