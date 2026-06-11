@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/pmcgleenon/reqsketch-rs/compare/v0.2.0...v0.2.1) - 2026-06-11
+
+### Other
+
+- release v0.2.0 ([#26](https://github.com/pmcgleenon/reqsketch-rs/pull/26))
+
 ## [0.2.0](https://github.com/pmcgleenon/reqsketch-rs/compare/v0.1.4...v0.2.0) - 2026-06-11
 
 ### Added
